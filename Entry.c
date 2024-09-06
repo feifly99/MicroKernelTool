@@ -20,6 +20,7 @@ VOID KernelDriverThreadSleep(LONG msec)
     my_interval.QuadPart *= msec;
     KeDelayExecutionThread(KernelMode, 0, &my_interval);
 }
+
 typedef struct _ValidAddressLink
 {
     ULONG64 beginAddress;
@@ -196,7 +197,7 @@ VOID KMP_searchPattern(CONST UCHAR* des, CONST UCHAR* pattern, SIZE_T desLen, SI
         }
         if (j == M && lps)
         {
-            //DbgPrint("ÔÚµØÖ·%llxÆ¥Åä³É¹¦\n", (ULONG64)(pageBeginAddress + i - j));
+            //DbgPrint("åœ¨åœ°å€%llxåŒ¹é…æˆåŠŸ\n", (ULONG64)(pageBeginAddress + i - j));
             if (*headRSL == NULL)
             {
                 *headRSL = createResultNode(1, (ULONG64)(pageBeginAddress + i - j));
@@ -355,7 +356,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     tempRSL = headRSL;
     while (temp != NULL && tempRSL->ResultAddressEntry.Flink != NULL)
     {
-        //Ò»¶¨ÒªÓÐtemp != NULLÕâ¾ä£¡ÒòÎªµ±temp == NULLµÄÊ±ºò£¬tempRSL->ResultAddressEntry.Flink != NULLÒþº¬ÁËÒ»¸öÖ¸Õë·ÃÎÊ²Ù×÷£¬»áÀ¶ÆÁ£¡£¡
+        //ä¸€å®šè¦æœ‰temp != NULLè¿™å¥ï¼å› ä¸ºå½“temp == NULLçš„æ—¶å€™ï¼ŒtempRSL->ResultAddressEntry.Flink != NULLéšå«äº†ä¸€ä¸ªæŒ‡é’ˆè®¿é—®æ“ä½œï¼Œä¼šè“å±ï¼ï¼
         PRSL tempX = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
         tempRSL->ResultAddressEntry.Flink = NULL;
         tempRSL->ResultAddressEntry.Blink = NULL;
