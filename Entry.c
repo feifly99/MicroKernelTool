@@ -15,27 +15,24 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     clientId.UniqueThread = NULL;
     OBJECT_ATTRIBUTES objAttrs;
     InitializeObjectAttributes(&objAttrs, NULL, 0, NULL, NULL);
-    if (NT_SUCCESS(ZwOpenProcess(&hProcess, GENERIC_ALL, &objAttrs, &clientId)))
-    {
-        MEMORY_INFORMATION_CLASS MIC = MemoryBasicInformation;
-        MEMORY_BASIC_INFORMATION mbi = { 0 };
-        PVAL headVAL = NULL;
-        buildValidAddressSingleList(&hProcess, &MIC, &mbi, &headVAL, 0x00007FFF00000000);
-        getRegionGapAndPages(headVAL);
-        printListVAL(headVAL);
-        ZwClose(hProcess);
-        PEPROCESS pe = NULL;
-        PRSL headRSL = NULL;
-        UCHAR pattern[13] = { 0x32,0x30, 0x31, 0x39, 0x33, 0x30, 0x39, 0x30, 0x31, 0x30, 0x31, 0x32, 0x30 };
-        SIZE_T patternLen = 13;
-        PsLookupProcessByProcessId((HANDLE)clientId.UniqueProcess, &pe);
-        buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(headVAL, &pe, pattern, patternLen, &headRSL);
-        printListRSL(headRSL);
-        ExFreeResultSavedLink(&headRSL);
-    }
-    else
+    MEMORY_INFORMATION_CLASS MIC = MemoryBasicInformation;
+    MEMORY_BASIC_INFORMATION mbi = { 0 };
+    PVAL headVAL = NULL;
+    if (!NT_SUCCESS(ZwOpenProcess(&hProcess, GENERIC_ALL, &objAttrs, &clientId)))
     {
         return STATUS_UNSUCCESSFUL;
     }
+    buildValidAddressSingleList(&hProcess, &MIC, &mbi, &headVAL, 0x00007FFF00000000);
+    getRegionGapAndPages(headVAL);
+    printListVAL(headVAL);
+    ZwClose(hProcess);
+    PEPROCESS pe = NULL;
+    PRSL headRSL = NULL;
+    UCHAR pattern[13] = { 0x32,0x30, 0x31, 0x39, 0x33, 0x30, 0x39, 0x30, 0x31, 0x30, 0x31, 0x32, 0x30 };
+    SIZE_T patternLen = 13;
+    PsLookupProcessByProcessId((HANDLE)clientId.UniqueProcess, &pe);
+    buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(headVAL, &pe, pattern, patternLen, &headRSL);
+    printListRSL(headRSL);
+    ExFreeResultSavedLink(&headRSL);
     return STATUS_SUCCESS;
 }
