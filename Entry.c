@@ -271,9 +271,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     PVAL temp = NULL, head = NULL;
     PRSL tempRSL = NULL, headRSL = NULL;
     size_t cnt = 0x0, writeAddressLen = 0x0;
+    UNREFERENCED_PARAMETER(cnt);
     while (currentAddress <= 0x00007FFF00000000)
     {
-        if (NT_SUCCESS(ZwQueryVirtualMemory(hProcess, currentAddress, MIC, &mbi, sizeof(MEMORY_BASIC_INFORMATION), &writeAddressLen)))
+        if (NT_SUCCESS(ZwQueryVirtualMemory(hProcess, (PVOID)currentAddress, MIC, &mbi, sizeof(MEMORY_BASIC_INFORMATION), &writeAddressLen)))
         {
             if (mbi.Protect != 0x00 && mbi.Protect != 0x01 && mbi.Protect != 0x104 && mbi.Protect != 0x100)
             {
@@ -336,27 +337,29 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         UL64 addressNeedFree = 0x0;
         __try
         {
-            memcpy(bufferReceive, temp->beginAddress, temp->pageNums * 4096);
+            memcpy(bufferReceive, (PVOID)temp->beginAddress, temp->pageNums * 4096);
         }
         __except (1)
         {
             KeUnstackDetachProcess(&apc);
             ObDereferenceObject(pe);
             ExFreePool(bufferReceive);
+            goto M; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
+            //[!]【在except结束后，要么加上return STATUS_UNSUCCESSFUL！要么goto到下一块！双重detachAPC会蓝屏，而且此BUG不是次次都有，不定时出现！】
         }
         KeUnstackDetachProcess(&apc);
         ObDereferenceObject(pe);
         KMP_searchPattern(bufferReceive, pattern, temp->pageNums * 4096, 13, temp->beginAddress, &addressNeedFree, &headRSL);
-        ExFreePool(addressNeedFree); addressNeedFree = NULL;
-        ExFreePool(bufferReceive); bufferReceive = NULL;
-        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+        ExFreePool((PVOID)bufferReceive); bufferReceive = NULL;
+        ExFreePool((PVOID)addressNeedFree); addressNeedFree = (UL64)NULL;
+        M:temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
     }
     printResultLink(headRSL);
     //free double-linked list
     tempRSL = headRSL;
     while (temp != NULL && tempRSL->ResultAddressEntry.Flink != NULL)
     {
-        //一定要有temp != NULL这句！因为当temp == NULL的时候，tempRSL->ResultAddressEntry.Flink != NULL隐含了一个指针访问操作，会蓝屏！！
+        //[!]一定要有temp != NULL这句！因为当temp == NULL的时候，tempRSL->ResultAddressEntry.Flink != NULL隐含了一个指针访问操作，会蓝屏！！
         PRSL tempX = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
         tempRSL->ResultAddressEntry.Flink = NULL;
         tempRSL->ResultAddressEntry.Blink = NULL;
