@@ -34,5 +34,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(headVAL, &pe, pattern, patternLen, &headRSL);
     printListRSL(headRSL);
     ExFreeResultSavedLink(&headRSL);
+    ExFreeValidAddressLink(&headVAL);
     return STATUS_SUCCESS;
 }
