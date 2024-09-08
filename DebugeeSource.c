@@ -103,7 +103,7 @@ VOID KMP_searchPattern(CONST UCHAR* des, CONST UCHAR* pattern, SIZE_T desLen, SI
         }
         if (j == M && lps)
         {
-            //DbgPrint("ÔÚµØÖ·%llxÆ¥Åä³É¹¦\n", (ULONG64)(pageBeginAddress + i - j));
+            //DbgPrint("åœ¨åœ°å€%llxåŒ¹é…æˆåŠŸ\n", (ULONG64)(pageBeginAddress + i - j));
             if (*headRSL == NULL)
             {
                 *headRSL = createSavedResultNode(1, (ULONG64)(pageBeginAddress + i - j));
@@ -281,8 +281,8 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(PVAL headVAL, PP
                 KeUnstackDetachProcess(&apc);
                 ObDereferenceObject(*pPe);
                 ExFreePool(bufferReceive);
-                goto M; //´ËÊ±³öÏÖbugcheckµ¼ÖÂKMPËÑË÷²»»áÖ´ÐÐ£¬Òò´ËÒ²²»»á·ÖÅänextÊý×éÄÚ´æ£¬Òò´Ë²»ÓÃExFreePool(addressNeedFree)£¬Ö±½Ó½øÐÐÏÂÒ»¸öÁ´±í½Úµã¾ÍÐÐÁË¡£
-                //[!]¡¾ÔÚexcept½áÊøºó£¬ÒªÃ´¼ÓÉÏreturn STATUS_UNSUCCESSFUL£¡ÒªÃ´gotoµ½ÏÂÒ»¿é£¡Ë«ÖØdetachAPC»áÀ¶ÆÁ£¬¶øÇÒ´ËBUG²»ÊÇ´Î´Î¶¼ÓÐ£¬²»¶¨Ê±³öÏÖ£¡¡¿
+                goto M; //æ­¤æ—¶å‡ºçŽ°bugcheckå¯¼è‡´KMPæœç´¢ä¸ä¼šæ‰§è¡Œï¼Œå› æ­¤ä¹Ÿä¸ä¼šåˆ†é…nextæ•°ç»„å†…å­˜ï¼Œå› æ­¤ä¸ç”¨ExFreePool(addressNeedFree)ï¼Œç›´æŽ¥è¿›è¡Œä¸‹ä¸€ä¸ªé“¾è¡¨èŠ‚ç‚¹å°±è¡Œäº†ã€‚
+                //[!]ã€åœ¨exceptç»“æŸåŽï¼Œè¦ä¹ˆåŠ ä¸Šreturn STATUS_UNSUCCESSFULï¼è¦ä¹ˆgotoåˆ°ä¸‹ä¸€å—ï¼åŒé‡detachAPCä¼šè“å±ï¼Œè€Œä¸”æ­¤BUGä¸æ˜¯æ¬¡æ¬¡éƒ½æœ‰ï¼Œä¸å®šæ—¶å‡ºçŽ°ï¼ã€‘
             }
             KeUnstackDetachProcess(&apc);
             ObDereferenceObject(*pPe);
@@ -297,12 +297,34 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(PVAL headVAL, PP
         }
     }
 }
+VOID processHiddenProcedure(ULONG64 pid)
+{
+    PEPROCESS pe = IoGetCurrentProcess();
+    ULONG64 UniqueProcessIdOffset = 0x440;
+    ULONG64 ActiveProcessLinksOffset = 0x448;
+    PLIST_ENTRY thisPeNode = NULL;
+    ULONG64 initialPID = *(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset);
+    while (*(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset) != pid)
+    {
+        thisPeNode = (PLIST_ENTRY)((ULONG64)pe + ActiveProcessLinksOffset);
+        pe = (PEPROCESS)((UL64)thisPeNode->Flink - ActiveProcessLinksOffset);
+    }
+    DbgPrint("***%p***", *(HANDLE*)((ULONG64)pe + UniqueProcessIdOffset));
+    //è¿™ä¸ªpeå°±æ˜¯ç›®æ ‡pidçš„è¿›ç¨‹ï¼ŒæŽ¥ä¸‹æ¥æ˜¯æ–­é“¾éšè—
+    PLIST_ENTRY currPeListEntryAddress = (PLIST_ENTRY)((UL64)pe + ActiveProcessLinksOffset);
+    PLIST_ENTRY prevPeListEntryAddress = currPeListEntryAddress->Blink;
+    PLIST_ENTRY nextPeListEntryAddress = currPeListEntryAddress->Flink;
+    prevPeListEntryAddress->Flink = nextPeListEntryAddress;
+    nextPeListEntryAddress->Blink = prevPeListEntryAddress;
+    DbgPrint("è¿›ç¨‹0x%p(%llu)å·²ç»æ–­é“¾éšè—.", (PVOID)pid, pid);
+    return;
+}
 VOID ExFreeResultSavedLink(PRSL* headRSL)
 {
     PRSL tempRSL = *headRSL;
     while (tempRSL != NULL && tempRSL->ResultAddressEntry.Flink != NULL)
     {
-        //[!]Ò»¶¨ÒªÓÐtempRSL != NULLÕâ¾ä£¡ÒòÎªµ±temp == NULLµÄÊ±ºò£¬tempRSL->ResultAddressEntry.Flink != NULLÒþº¬ÁËÒ»¸öÖ¸Õë·ÃÎÊ²Ù×÷£¬»áÀ¶ÆÁ£¡£¡
+        //[!]ä¸€å®šè¦æœ‰tempRSL != NULLè¿™å¥ï¼å› ä¸ºå½“temp == NULLçš„æ—¶å€™ï¼ŒtempRSL->ResultAddressEntry.Flink != NULLéšå«äº†ä¸€ä¸ªæŒ‡é’ˆè®¿é—®æ“ä½œï¼Œä¼šè“å±ï¼ï¼
         PRSL tempX = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
         tempRSL->ResultAddressEntry.Flink = NULL;
         tempRSL->ResultAddressEntry.Blink = NULL;
