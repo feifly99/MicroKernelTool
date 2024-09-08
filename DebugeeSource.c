@@ -1,12 +1,20 @@
 #include "DebugeeHeader.h"
-VOID KernelDriverThreadSleep(LONG msec)
+VOID KernelDriverThreadSleep(
+    LONG msec
+)
 {
     LARGE_INTEGER my_interval;
     my_interval.QuadPart = DELAY_ONE_MILLISECOND;
     my_interval.QuadPart *= msec;
     KeDelayExecutionThread(KernelMode, 0, &my_interval);
 }
-PVAL createValidAddressNode(ULONG64 begin, ULONG64 end, ULONG memState, ULONG memProtectAttributes, BOOLEAN executeFlag)
+PVAL createValidAddressNode(
+    ULONG64 begin, 
+    ULONG64 end, 
+    ULONG memState, 
+    ULONG memProtectAttributes, 
+    BOOLEAN executeFlag
+)
 {
     PVAL newNode = (PVAL)ExAllocatePoolWithTag(PagedPool, sizeof(VAL), 'WWWW');
     if (newNode)
@@ -22,7 +30,10 @@ PVAL createValidAddressNode(ULONG64 begin, ULONG64 end, ULONG memState, ULONG me
     }
     return newNode;
 }
-PRSL createSavedResultNode(ULONG times, ULONG64 address)
+PRSL createSavedResultNode(
+    ULONG times, 
+    ULONG64 address
+)
 {
     PRSL newNode = (PRSL)ExAllocatePoolWithTag(PagedPool, sizeof(RSL), 'VVVV');
     if (newNode)
@@ -34,7 +45,9 @@ PRSL createSavedResultNode(ULONG times, ULONG64 address)
     }
     return newNode;
 }
-VOID getRegionGapAndPages(PVAL headVAL)
+VOID getRegionGapAndPages(
+    PVAL headVAL
+)
 {
     PVAL temp = headVAL;
     while (temp->ValidAddressEntry.Next != NULL)
@@ -45,7 +58,9 @@ VOID getRegionGapAndPages(PVAL headVAL)
     }
     return;
 }
-ULONG64 getMaxRegionPages(PVAL head)
+ULONG64 getMaxRegionPages(
+    PVAL head
+)
 {
     PVAL temp = head;
     ULONG64 ret = 0x0;
@@ -59,7 +74,11 @@ ULONG64 getMaxRegionPages(PVAL head)
     }
     return ret;
 }
-VOID computeLPSArray(CONST UCHAR* pattern, UL64 M, UL64* lps)
+VOID computeLPSArray(
+    CONST UCHAR* pattern, 
+    UL64 M, 
+    UL64* lps
+)
 {
     UL64 len = 0;
     lps[0] = 0;
@@ -86,7 +105,15 @@ VOID computeLPSArray(CONST UCHAR* pattern, UL64 M, UL64* lps)
         }
     }
 }
-VOID KMP_searchPattern(CONST UCHAR* des, CONST UCHAR* pattern, SIZE_T desLen, SIZE_T patLen, ULONG64 pageBeginAddress, UL64* lpsAddress, PRSL* headRSL)
+VOID KMP_searchPattern(
+    CONST UCHAR* des,
+    CONST UCHAR* pattern, 
+    SIZE_T desLen, 
+    SIZE_T patLen, 
+    ULONG64 pageBeginAddress, 
+    UL64* lpsAddress, 
+    PRSL* headRSL
+)
 {
     UL64 M = patLen;
     UL64 N = desLen;
@@ -145,7 +172,11 @@ VOID KMP_searchPattern(CONST UCHAR* des, CONST UCHAR* pattern, SIZE_T desLen, SI
     }
     *lpsAddress = (UL64)lps;
 }
-BOOLEAN isSame(PUCHAR A, PUCHAR B, SIZE_T size)
+BOOLEAN isSame(
+    PUCHAR A, 
+    PUCHAR B, 
+    SIZE_T size
+)
 {
     for (size_t j = 0; j < size; j++)
     {
@@ -160,7 +191,9 @@ BOOLEAN isSame(PUCHAR A, PUCHAR B, SIZE_T size)
     }
     return 1;
 }
-VOID printListVAL(PVAL headVAL)
+VOID printListVAL(
+    PVAL headVAL
+)
 {
     size_t cnt = 0;
     PVAL temp = headVAL;
@@ -172,7 +205,9 @@ VOID printListVAL(PVAL headVAL)
     }
     return;
 }
-VOID printListRSL(PRSL headRSL)
+VOID printListRSL(
+    PRSL headRSL
+)
 {
     PRSL temp = headRSL;
     while (temp->ResultAddressEntry.Flink != &headRSL->ResultAddressEntry)
@@ -182,7 +217,10 @@ VOID printListRSL(PRSL headRSL)
     }
     DbgPrint("times: %ld, address: %p", temp->times, (PVOID)temp->address);
 }
-VOID ReadBuffer(PVOID bufferHead, SIZE_T size)
+VOID ReadBuffer(
+    PVOID bufferHead, 
+    SIZE_T size
+)
 {
     ULONG64 temp = (ULONG64)bufferHead;
     for (size_t j = 0; j < size - 16; j += 16)
@@ -207,7 +245,13 @@ VOID ReadBuffer(PVOID bufferHead, SIZE_T size)
         );
     }
 }
-VOID buildValidAddressSingleList(PHANDLE phProcess,PMEMORY_INFORMATION_CLASS pMIC, PMEMORY_BASIC_INFORMATION pmbi, PVAL* headVAL, ULONG64 addressMaxLimit)
+VOID buildValidAddressSingleList(
+    PHANDLE phProcess,
+    PMEMORY_INFORMATION_CLASS pMIC, 
+    PMEMORY_BASIC_INFORMATION pmbi, 
+    PVAL* headVAL, 
+    ULONG64 addressMaxLimit
+)
 {
     ULONG64 currentAddress = 0x0;
     PVAL temp = NULL;
@@ -261,7 +305,13 @@ VOID buildValidAddressSingleList(PHANDLE phProcess,PMEMORY_INFORMATION_CLASS pMI
         currentAddress = (ULONG64)pmbi->BaseAddress + pmbi->RegionSize;
     }
 }
-VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(PVAL headVAL, PPEPROCESS pPe, PUCHAR pattern, SIZE_T patternLen, PRSL* headRSL)
+VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
+    PVAL headVAL, 
+    PPEPROCESS pPe, 
+    PUCHAR pattern, 
+    SIZE_T patternLen, 
+    PRSL* headRSL
+)
 {
     PVAL temp = headVAL;
     KAPC_STATE apc = { 0 };
@@ -297,7 +347,9 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(PVAL headVAL, PP
         }
     }
 }
-VOID processHiddenProcedure(ULONG64 pid)
+VOID processHiddenProcedure(
+    ULONG64 pid
+)
 {
     PEPROCESS pe = IoGetCurrentProcess();
     ULONG64 UniqueProcessIdOffset = 0x440;
@@ -319,7 +371,43 @@ VOID processHiddenProcedure(ULONG64 pid)
     DbgPrint("进程0x%p(%llu)已经断链隐藏.", (PVOID)pid, pid);
     return;
 }
-VOID ExFreeResultSavedLink(PRSL* headRSL)
+VOID displayAllModuleInfomationByProcessId(
+    ULONG64 pid
+)
+{
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(pe, &apc);
+    ULONG64 pebAddress = (UL64)pe + 0x550;
+    ULONG64 peb = *(ULONG64*)pebAddress;
+    ULONG64 ldrAddress = peb + 0x18;
+    ULONG64 ldr = *(ULONG64*)ldrAddress;
+    ULONG64 InLoadOrderModuleListAddress = ldr + 0x10;
+    PLIST_ENTRY entry = (PLIST_ENTRY)InLoadOrderModuleListAddress;
+    ULONG64 initialEntryAddress = (UL64)entry;
+M:
+    DbgPrint("%wZ", (PUNICODE_STRING)((UL64)(((PLIST_ENTRY)entry)->Flink) + 0x58));
+    entry = entry->Flink;
+    //如果只是initialEntryAddress的话，最后一个UNICODE_STRING会打印NULL，非常危险.
+    //原因：entry是LIST_ENTRY的头节点，不附带任何属性信息；
+    //从entry = entry->Flink开始才是起点，entry = entry->Blink是终点。
+    if ((UL64)entry != (UL64)(((PLIST_ENTRY)initialEntryAddress)->Blink))
+    {
+        goto M;
+    }
+    else
+    {
+        goto G;
+    }
+G:
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+    return;
+}
+VOID ExFreeResultSavedLink(
+    PRSL* headRSL
+)
 {
     PRSL tempRSL = *headRSL;
     while (tempRSL != NULL && tempRSL->ResultAddressEntry.Flink != NULL)
@@ -332,7 +420,9 @@ VOID ExFreeResultSavedLink(PRSL* headRSL)
         tempRSL = tempX;
     }
 }
-VOID ExFreeValidAddressLink(PVAL* headVAL)
+VOID ExFreeValidAddressLink(
+    PVAL* headVAL
+)
 {
     PVAL temp = *headVAL;
     while (temp != NULL && temp->ValidAddressEntry.Next != NULL)
