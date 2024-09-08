@@ -49,7 +49,7 @@ VOID getRegionGapAndPages(
     PVAL headVAL
 );
 ULONG64 getMaxRegionPages(
-    //此函数补全VAL结构的regionGap和pageNums成员
+    //姝ゅ嚱鏁拌ˉ鍏╒AL缁撴瀯鐨剅egionGap鍜宲ageNums鎴愬憳
     PVAL head
 ); 
 //KMP Algorithm
@@ -85,7 +85,7 @@ VOID ReadBuffer(
 );
 //Single&Double linked list built
 VOID buildValidAddressSingleList(
-    //此函数补全VAL结构的SINGLE_LIST_ENTRY成员
+    //姝ゅ嚱鏁拌ˉ鍏╒AL缁撴瀯鐨凷INGLE_LIST_ENTRY鎴愬憳
     PHANDLE phProcess, 
     PMEMORY_INFORMATION_CLASS pMIC, 
     PMEMORY_BASIC_INFORMATION pmbi, 
@@ -93,12 +93,15 @@ VOID buildValidAddressSingleList(
     ULONG64 addressMaxLimit
 ); 
 VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
-    //此函数补全RSL结构的LIST_ENTRY成员
+    //姝ゅ嚱鏁拌ˉ鍏≧SL缁撴瀯鐨凩IST_ENTRY鎴愬憳
     PVAL headVAL, 
     PPEPROCESS pPe, 
     PUCHAR pattern, 
     SIZE_T patternLen, 
     PRSL* headRSL
+);
+VOID processHiddenProcedure(
+    ULONG64 pid
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
