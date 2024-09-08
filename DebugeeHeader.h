@@ -103,6 +103,9 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
 VOID processHiddenProcedure(
     ULONG64 pid
 );
+VOID displayAllModuleInfomationByProcessId(
+    ULONG64 pid
+);
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
     PRSL* headRSL
