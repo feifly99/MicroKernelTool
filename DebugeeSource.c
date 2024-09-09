@@ -315,12 +315,12 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
 {
     PVAL temp = headVAL;
     KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(*pPe, &apc);
     while (temp->ValidAddressEntry.Next != NULL)
     {
         UCHAR* bufferReceive = (UCHAR*)ExAllocatePoolWithTag(PagedPool, temp->pageNums * 4096, 'TTTT');
         if (bufferReceive)
         {
-            KeStackAttachProcess(*pPe, &apc);
             UL64 addressNeedFree = 0x0;
             __try
             {
@@ -328,24 +328,19 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
             }
             __except (1)
             {
-                KeUnstackDetachProcess(&apc);
-                ObDereferenceObject(*pPe);
                 ExFreePool(bufferReceive);
-                goto M; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
+                temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+                continue; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
                 //[!]【在except结束后，要么加上return STATUS_UNSUCCESSFUL！要么goto到下一块！双重detachAPC会蓝屏，而且此BUG不是次次都有，不定时出现！】
             }
-            KeUnstackDetachProcess(&apc);
-            ObDereferenceObject(*pPe);
             KMP_searchPattern(bufferReceive, pattern, temp->pageNums * 4096, patternLen, temp->beginAddress, &addressNeedFree, headRSL);
             ExFreePool((PVOID)bufferReceive); bufferReceive = NULL;
             ExFreePool((PVOID)addressNeedFree); addressNeedFree = (UL64)NULL;
-            M:temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
-        }
-        else
-        {
-            break;
+            temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
         }
     }
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(*pPe);
 }
 VOID processHiddenProcedure(
     ULONG64 pid
@@ -393,14 +388,7 @@ M:
     //原因：entry是LIST_ENTRY的头节点，不附带任何属性信息；
     //从entry = entry->Flink开始才是起点，entry = entry->Blink是终点。
     if ((UL64)entry != (UL64)(((PLIST_ENTRY)initialEntryAddress)->Blink))
-    {
         goto M;
-    }
-    else
-    {
-        goto G;
-    }
-G:
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
     return;
