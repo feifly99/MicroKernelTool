@@ -381,14 +381,14 @@ VOID displayAllModuleInfomationByProcessId(
     ULONG64 InLoadOrderModuleListAddress = ldr + 0x10;
     PLIST_ENTRY entry = (PLIST_ENTRY)InLoadOrderModuleListAddress;
     ULONG64 initialEntryAddress = (UL64)entry;
-M:
-    DbgPrint("%wZ", (PUNICODE_STRING)((UL64)(((PLIST_ENTRY)entry)->Flink) + 0x58));
-    entry = entry->Flink;
-    //如果只是initialEntryAddress的话，最后一个UNICODE_STRING会打印NULL，非常危险.
-    //原因：entry是LIST_ENTRY的头节点，不附带任何属性信息；
-    //从entry = entry->Flink开始才是起点，entry = entry->Blink是终点。
-    if ((UL64)entry != (UL64)(((PLIST_ENTRY)initialEntryAddress)->Blink))
-        goto M;
+    while((UL64)entry != (UL64)(((PLIST_ENTRY)initialEntryAddress)->Blink))
+    {
+        //如果只是initialEntryAddress的话，最后一个UNICODE_STRING会打印NULL，非常危险；
+        //原因：entry是LIST_ENTRY的头节点，不附带任何属性信息；
+        //从entry = entry->Flink开始才是起点，entry = entry->Blink是终点。
+        DbgPrint("%wZ", (PUNICODE_STRING)((UL64)(((PLIST_ENTRY)entry)->Flink) + 0x58));
+        entry = entry->Flink;
+    }
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
     return;
