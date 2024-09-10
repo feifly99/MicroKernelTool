@@ -106,6 +106,15 @@ VOID processHiddenProcedure(
 VOID displayAllModuleInfomationByProcessId(
     ULONG64 pid
 );
+VOID displayAllThreadInfomationByProcessId(
+    ULONG64 pid
+);
+VOID writeProcessMemory(
+    ULONG64 pid,
+    PVOID targetAddress,
+    PVOID content,
+    SIZE_T size
+);
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
     PRSL* headRSL
