@@ -1,4 +1,10 @@
 #include "DebugeeHeader.h"
+extern ULONG64 __asm__readDR0();
+extern ULONG64 __asm__readCR0();
+extern ULONG64 __asm__WRbreak();
+extern ULONG64 __asm__WRrestore();
+extern ULONG64 __asm__getEFLregistor();
+extern ULONG64 __asm__restoreEFLregistor();
 VOID KernelDriverThreadSleep(
     LONG msec
 )
@@ -370,25 +376,63 @@ VOID displayAllModuleInfomationByProcessId(
     ULONG64 pid
 )
 {
+    PLIST_ENTRY initialEntry = NULL;
+    PLIST_ENTRY tempEntry = NULL;
     PEPROCESS pe = NULL;
     PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KAPC_STATE apc = { 0 };
     KeStackAttachProcess(pe, &apc);
-    ULONG64 pebAddress = (UL64)pe + 0x550;
+    ULONG64 pebAddress = (ULONG64)pe + 0x550;
     ULONG64 peb = *(ULONG64*)pebAddress;
-    ULONG64 ldrAddress = peb + 0x18;
-    ULONG64 ldr = *(ULONG64*)ldrAddress;
-    ULONG64 InLoadOrderModuleListAddress = ldr + 0x10;
-    PLIST_ENTRY entry = (PLIST_ENTRY)InLoadOrderModuleListAddress;
-    ULONG64 initialEntryAddress = (UL64)entry;
-    while((UL64)entry != (UL64)(((PLIST_ENTRY)initialEntryAddress)->Blink))
+    ULONG64 pldAddress = peb + 0x18;
+    ULONG64 pld = *(ULONG64*)pldAddress;
+    ULONG64 InLoadOrderModuleListAddress = (ULONG64)pld + 0x10;
+    PLIST_ENTRY initialEntryAddress = (PLIST_ENTRY)InLoadOrderModuleListAddress;
+    PLIST_ENTRY temp = initialEntryAddress;
+    while((UL64)temp != (ULONG64)initialEntryAddress->Blink)
     {
-        //如果只是initialEntryAddress的话，最后一个UNICODE_STRING会打印NULL，非常危险；
-        //原因：entry是LIST_ENTRY的头节点，不附带任何属性信息；
-        //从entry = entry->Flink开始才是起点，entry = entry->Blink是终点。
-        DbgPrint("%wZ", (PUNICODE_STRING)((UL64)(((PLIST_ENTRY)entry)->Flink) + 0x58));
-        entry = entry->Flink;
+        DbgPrint("DllBase: %p \t DllName: %wZ", *(HANDLE*)((ULONG64)temp->Flink + 0x30), (PUNICODE_STRING)((ULONG64)temp->Flink + 0x58));
+        temp = temp->Flink;
     }
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+    return;
+}
+VOID displayAllThreadInfomationByProcessId(
+    ULONG64 pid
+)
+{
+    PEPROCESS pe = NULL;
+    ULONG64 cidAddress = 0x0;
+    KAPC_STATE apc = { 0 };
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KeStackAttachProcess(pe, &apc);
+    ULONG64 initialEntryAddress = (UL64)pe + 0x5E0;
+    PLIST_ENTRY firstThreadListEntryAddress = ((PLIST_ENTRY)((UL64)pe + 0x5E0))->Flink;
+    while ((UL64)firstThreadListEntryAddress != (UL64)(((PLIST_ENTRY)initialEntryAddress)))
+    {
+        cidAddress = (UL64)firstThreadListEntryAddress - 0x4E8 + 0x478;
+        DbgPrint("%p", ((PCLIENT_ID)cidAddress)->UniqueThread);
+        firstThreadListEntryAddress = firstThreadListEntryAddress->Flink;
+    }
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+}
+VOID writeProcessMemory(
+    ULONG64 pid,
+    PVOID targetAddress,
+    PVOID content,
+    SIZE_T size
+)
+{
+    ULONG64 oldCR0 = 0x0;
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(pe, &apc);
+    __asm__WRbreak(&oldCR0);
+    RtlCopyMemory(targetAddress, content, size);
+    __asm__WRrestore(oldCR0);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
     return;
