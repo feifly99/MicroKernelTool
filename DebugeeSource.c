@@ -1,12 +1,9 @@
 #include "DebugeeHeader.h"
-extern ULONG64 __asm__readDR0();
-extern ULONG64 __asm__readCR0();
-extern ULONG64 __asm__WRbreak();
-extern ULONG64 __asm__WRrestore();
-extern ULONG64 __asm__getEFLregistor();
-extern ULONG64 __asm__restoreEFLregistor();
+
+#pragma warning(disable:6387)
+
 VOID KernelDriverThreadSleep(
-    LONG msec
+    IN LONG msec
 )
 {
     LARGE_INTEGER my_interval;
@@ -15,11 +12,11 @@ VOID KernelDriverThreadSleep(
     KeDelayExecutionThread(KernelMode, 0, &my_interval);
 }
 PVAL createValidAddressNode(
-    ULONG64 begin, 
-    ULONG64 end, 
-    ULONG memState, 
-    ULONG memProtectAttributes, 
-    BOOLEAN executeFlag
+    IN ULONG64 begin,
+    IN ULONG64 end,
+    IN ULONG memState,
+    IN ULONG memProtectAttributes,
+    IN BOOLEAN executeFlag
 )
 {
     PVAL newNode = (PVAL)ExAllocatePoolWithTag(PagedPool, sizeof(VAL), 'WWWW');
@@ -37,8 +34,8 @@ PVAL createValidAddressNode(
     return newNode;
 }
 PRSL createSavedResultNode(
-    ULONG times, 
-    ULONG64 address
+    IN ULONG times,
+    IN ULONG64 address
 )
 {
     PRSL newNode = (PRSL)ExAllocatePoolWithTag(PagedPool, sizeof(RSL), 'VVVV');
@@ -52,7 +49,7 @@ PRSL createSavedResultNode(
     return newNode;
 }
 VOID getRegionGapAndPages(
-    PVAL headVAL
+    IN_OUT PVAL headVAL
 )
 {
     PVAL temp = headVAL;
@@ -65,7 +62,7 @@ VOID getRegionGapAndPages(
     return;
 }
 ULONG64 getMaxRegionPages(
-    PVAL head
+    IN PVAL head
 )
 {
     PVAL temp = head;
@@ -81,9 +78,9 @@ ULONG64 getMaxRegionPages(
     return ret;
 }
 VOID computeLPSArray(
-    CONST UCHAR* pattern, 
-    UL64 M, 
-    UL64* lps
+    IN CONST UCHAR* pattern,
+    IN UL64 M,
+    OUT UL64* lps
 )
 {
     UL64 len = 0;
@@ -112,13 +109,13 @@ VOID computeLPSArray(
     }
 }
 VOID KMP_searchPattern(
-    CONST UCHAR* des,
-    CONST UCHAR* pattern, 
-    SIZE_T desLen, 
-    SIZE_T patLen, 
-    ULONG64 pageBeginAddress, 
-    UL64* lpsAddress, 
-    PRSL* headRSL
+    IN CONST UCHAR* des,
+    IN CONST UCHAR* pattern,
+    IN SIZE_T desLen,
+    IN SIZE_T patLen,
+    IN ULONG64 pageBeginAddress,
+    OUT UL64* lpsAddress,
+    OUT PRSL* headRSL
 )
 {
     UL64 M = patLen;
@@ -179,9 +176,9 @@ VOID KMP_searchPattern(
     *lpsAddress = (UL64)lps;
 }
 BOOLEAN isSame(
-    PUCHAR A, 
-    PUCHAR B, 
-    SIZE_T size
+    IN PUCHAR A,
+    IN PUCHAR B,
+    IN SIZE_T size
 )
 {
     for (size_t j = 0; j < size; j++)
@@ -198,7 +195,7 @@ BOOLEAN isSame(
     return 1;
 }
 VOID printListVAL(
-    PVAL headVAL
+    IN PVAL headVAL
 )
 {
     size_t cnt = 0;
@@ -212,7 +209,7 @@ VOID printListVAL(
     return;
 }
 VOID printListRSL(
-    PRSL headRSL
+    IN PRSL headRSL
 )
 {
     PRSL temp = headRSL;
@@ -224,8 +221,8 @@ VOID printListRSL(
     DbgPrint("times: %ld, address: %p", temp->times, (PVOID)temp->address);
 }
 VOID ReadBuffer(
-    PVOID bufferHead, 
-    SIZE_T size
+    IN PVOID bufferHead,
+    IN SIZE_T size
 )
 {
     ULONG64 temp = (ULONG64)bufferHead;
@@ -252,11 +249,11 @@ VOID ReadBuffer(
     }
 }
 VOID buildValidAddressSingleList(
-    PHANDLE phProcess,
-    PMEMORY_INFORMATION_CLASS pMIC, 
-    PMEMORY_BASIC_INFORMATION pmbi, 
-    PVAL* headVAL, 
-    ULONG64 addressMaxLimit
+    IN PHANDLE phProcess,
+    IN PMEMORY_INFORMATION_CLASS pMIC,
+    IN PMEMORY_BASIC_INFORMATION pmbi,
+    OUT PVAL* headVAL,
+    IN ULONG64 addressMaxLimit
 )
 {
     ULONG64 currentAddress = 0x0;
@@ -312,51 +309,49 @@ VOID buildValidAddressSingleList(
     }
 }
 VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
-    PVAL headVAL, 
-    PPEPROCESS pPe, 
-    PUCHAR pattern, 
-    SIZE_T patternLen, 
-    PRSL* headRSL
+    IN ULONG64 pid,
+    IN PVAL headVAL,
+    IN PUCHAR pattern,
+    IN SIZE_T patternLen,
+    OUT PRSL* headRSL
 )
 {
     PVAL temp = headVAL;
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KAPC_STATE apc = { 0 };
-    KeStackAttachProcess(*pPe, &apc);
+    KeStackAttachProcess(pe, &apc);
     while (temp->ValidAddressEntry.Next != NULL)
     {
         UCHAR* bufferReceive = (UCHAR*)ExAllocatePoolWithTag(PagedPool, temp->pageNums * 4096, 'TTTT');
-        if (bufferReceive)
+        UL64 addressNeedFree = 0x0;
+        __try
         {
-            UL64 addressNeedFree = 0x0;
-            __try
-            {
-                memcpy(bufferReceive, (PVOID)temp->beginAddress, temp->pageNums * 4096);
-            }
-            __except (1)
-            {
-                ExFreePool(bufferReceive);
-                temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
-                continue; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
-                //[!]【在except结束后，要么加上return STATUS_UNSUCCESSFUL！要么goto到下一块！双重detachAPC会蓝屏，而且此BUG不是次次都有，不定时出现！】
-            }
-            KMP_searchPattern(bufferReceive, pattern, temp->pageNums * 4096, patternLen, temp->beginAddress, &addressNeedFree, headRSL);
-            ExFreePool((PVOID)bufferReceive); bufferReceive = NULL;
-            ExFreePool((PVOID)addressNeedFree); addressNeedFree = (UL64)NULL;
-            temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+            memcpy(bufferReceive, (PVOID)temp->beginAddress, temp->pageNums * 4096);
         }
+        __except (1)
+        {
+            ExFreePool(bufferReceive);
+            temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+            continue; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
+            //[!]【在except结束后，要么加上return STATUS_UNSUCCESSFUL！要么goto到下一块！双重detachAPC会蓝屏，而且此BUG不是次次都有，不定时出现！】
+        }
+        KMP_searchPattern((CONST UCHAR*)bufferReceive, (CONST UCHAR*)pattern, temp->pageNums * 4096, patternLen, temp->beginAddress, &addressNeedFree, headRSL);
+        ExFreePool((PVOID)bufferReceive); bufferReceive = NULL;
+        ExFreePool((PVOID)addressNeedFree); addressNeedFree = (UL64)NULL;
+        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
     }
     KeUnstackDetachProcess(&apc);
-    ObDereferenceObject(*pPe);
+    ObDereferenceObject(pe);
 }
 VOID processHiddenProcedure(
-    ULONG64 pid
+    IN ULONG64 pid
 )
 {
     PEPROCESS pe = IoGetCurrentProcess();
     ULONG64 UniqueProcessIdOffset = 0x440;
     ULONG64 ActiveProcessLinksOffset = 0x448;
     PLIST_ENTRY thisPeNode = NULL;
-    ULONG64 initialPID = *(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset);
     while (*(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset) != pid)
     {
         thisPeNode = (PLIST_ENTRY)((ULONG64)pe + ActiveProcessLinksOffset);
@@ -373,11 +368,9 @@ VOID processHiddenProcedure(
     return;
 }
 VOID displayAllModuleInfomationByProcessId(
-    ULONG64 pid
+    IN ULONG64 pid
 )
 {
-    PLIST_ENTRY initialEntry = NULL;
-    PLIST_ENTRY tempEntry = NULL;
     PEPROCESS pe = NULL;
     PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KAPC_STATE apc = { 0 };
@@ -399,7 +392,7 @@ VOID displayAllModuleInfomationByProcessId(
     return;
 }
 VOID displayAllThreadInfomationByProcessId(
-    ULONG64 pid
+    IN ULONG64 pid
 )
 {
     PEPROCESS pe = NULL;
@@ -419,10 +412,10 @@ VOID displayAllThreadInfomationByProcessId(
     ObDereferenceObject(pe);
 }
 VOID writeProcessMemory(
-    ULONG64 pid,
-    PVOID targetAddress,
-    PVOID content,
-    SIZE_T size
+    IN ULONG64 pid,
+    IN PVOID targetAddress,
+    IN PVOID content,
+    IN SIZE_T size
 )
 {
     ULONG64 oldCR0 = 0x0;
@@ -438,7 +431,7 @@ VOID writeProcessMemory(
     return;
 }
 VOID ExFreeResultSavedLink(
-    PRSL* headRSL
+    OUT PRSL* headRSL
 )
 {
     PRSL tempRSL = *headRSL;
@@ -453,7 +446,7 @@ VOID ExFreeResultSavedLink(
     }
 }
 VOID ExFreeValidAddressLink(
-    PVAL* headVAL
+    OUT PVAL* headVAL
 )
 {
     PVAL temp = *headVAL;
