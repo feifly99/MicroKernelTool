@@ -8,11 +8,18 @@
 #define DELAY_ONE_MICROSECOND     (-10)
 #define DELAY_ONE_MILLISECOND    (DELAY_ONE_MICROSECOND*1000)
 
+extern ULONG64 __asm__readDR0();
+extern ULONG64 __asm__readCR0();
+extern ULONG64 __asm__WRbreak();
+extern ULONG64 __asm__WRrestore();
+extern ULONG64 __asm__getEFLregistor();
+extern ULONG64 __asm__restoreEFLregistor();
+
 typedef ULONG64 UL64;
 typedef MEMORY_INFORMATION_CLASS* PMEMORY_INFORMATION_CLASS;
 typedef PEPROCESS* PPEPROCESS;
 
-typedef struct _ValidAddressLink
+typedef struct _ValidAddressList
 {
     ULONG64 beginAddress;
     ULONG64 endAddress;
@@ -24,7 +31,7 @@ typedef struct _ValidAddressLink
     SINGLE_LIST_ENTRY ValidAddressEntry;
 }VAL, * PVAL;
 
-typedef struct _ResultSavedLink
+typedef struct _ResultSavedList
 {
     ULONG times;
     ULONG64 address;
@@ -32,94 +39,93 @@ typedef struct _ResultSavedLink
 }RSL, * PRSL, ** PPRSL;
 
 VOID KernelDriverThreadSleep(
-    LONG msec
+    IN LONG msec
 );
 PVAL createValidAddressNode(
-    ULONG64 begin, 
-    ULONG64 end, 
-    ULONG memState, 
-    ULONG memProtectAttributes, 
-    BOOLEAN executeFlag
+    IN ULONG64 begin, 
+    IN ULONG64 end,
+    IN ULONG memState,
+    IN ULONG memProtectAttributes,
+    IN BOOLEAN executeFlag
 );
 PRSL createSavedResultNode(
-    ULONG times, 
-    ULONG64 address
+    IN ULONG times,
+    IN ULONG64 address
 );
 VOID getRegionGapAndPages(
-    PVAL headVAL
+    //此函数补全VAL结构的regionGap和pageNums成员
+    IN_OUT PVAL headVAL
 );
 ULONG64 getMaxRegionPages(
-    //此函数补全VAL结构的regionGap和pageNums成员
-    PVAL head
+    IN PVAL head
 ); 
 //KMP Algorithm
 VOID computeLPSArray(
-    CONST UCHAR* pattern, 
-    UL64 M, 
-    UL64* lps
+    IN CONST UCHAR* pattern,
+    IN UL64 M,
+    OUT UL64* lps
 );
 VOID KMP_searchPattern(
-    CONST UCHAR* des, 
-    CONST UCHAR* pattern, 
-    SIZE_T desLen, 
-    SIZE_T patLen, 
-    ULONG64 pageBeginAddress, 
-    UL64* lpsAddress, 
-    PRSL* headRSL
+    IN CONST UCHAR* des,
+    IN CONST UCHAR* pattern,
+    IN SIZE_T desLen,
+    IN SIZE_T patLen,
+    IN ULONG64 pageBeginAddress,
+    OUT UL64* lpsAddress, 
+    OUT PRSL* headRSL
 );
 //Debug judge and output
 BOOLEAN isSame(
-    PUCHAR A, 
-    PUCHAR B, 
-    SIZE_T size
+    IN PUCHAR A, 
+    IN PUCHAR B,
+    IN SIZE_T size
 );
 VOID printListVAL(
-    PVAL headVAL
+    IN PVAL headVAL
 );
 VOID printListRSL(
-    PRSL headRSL
+    IN PRSL headRSL
 );
 VOID ReadBuffer(
-    PVOID bufferHead, 
-    SIZE_T size
+    IN PVOID bufferHead,
+    IN SIZE_T size
 );
 //Single&Double linked list built
 VOID buildValidAddressSingleList(
     //此函数补全VAL结构的SINGLE_LIST_ENTRY成员
-    PHANDLE phProcess, 
-    PMEMORY_INFORMATION_CLASS pMIC, 
-    PMEMORY_BASIC_INFORMATION pmbi, 
-    PVAL* headVAL, 
-    ULONG64 addressMaxLimit
+    IN PHANDLE phProcess,
+    IN PMEMORY_INFORMATION_CLASS pMIC,
+    IN PMEMORY_BASIC_INFORMATION pmbi,
+    OUT PVAL* headVAL, 
+    IN ULONG64 addressMaxLimit
 ); 
 VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
-    //此函数补全RSL结构的LIST_ENTRY成员
-    PVAL headVAL, 
-    PPEPROCESS pPe, 
-    PUCHAR pattern, 
-    SIZE_T patternLen, 
-    PRSL* headRSL
+    IN ULONG64 pid,
+    IN PVAL headVAL,
+    IN PUCHAR pattern,
+    IN SIZE_T patternLen,
+    OUT PRSL* headRSL
 );
 VOID processHiddenProcedure(
-    ULONG64 pid
+    IN ULONG64 pid
 );
 VOID displayAllModuleInfomationByProcessId(
-    ULONG64 pid
+    IN ULONG64 pid
 );
 VOID displayAllThreadInfomationByProcessId(
-    ULONG64 pid
+    IN ULONG64 pid
 );
 VOID writeProcessMemory(
-    ULONG64 pid,
-    PVOID targetAddress,
-    PVOID content,
-    SIZE_T size
+    IN ULONG64 pid,
+    IN PVOID targetAddress,
+    IN PVOID content,
+    IN SIZE_T size
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
-    PRSL* headRSL
+    OUT PRSL* headRSL
 );
 VOID ExFreeValidAddressLink(
-    PVAL* headVAL
+    OUT PVAL* headVAL
 );
 #endif
