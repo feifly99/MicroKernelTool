@@ -344,6 +344,19 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
 }
+SIZE_T getNodeNumsForDoubleLinkedList(
+    IN PRSL headRSL
+)
+{
+    PRSL temp = headRSL;
+    SIZE_T cnt = 0x0;
+    while (temp->ResultAddressEntry.Flink != &headRSL->ResultAddressEntry)
+    {
+        cnt++;
+        temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+    }
+    return cnt;
+}
 VOID processHiddenProcedure(
     IN ULONG64 pid
 )
@@ -450,10 +463,23 @@ VOID ExFreeValidAddressLink(
 )
 {
     PVAL temp = *headVAL;
-    while (temp != NULL && temp->ValidAddressEntry.Next != NULL)
+    while (temp->ValidAddressEntry.Next != NULL)
+    {
+        PVAL tempX = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+        ExFreePool(temp); 
+        temp = tempX;
+    }
+    ExFreePool(temp);
+    temp = NULL;
+}
+/*内存泄露问题！
+    while (temp->ValidAddressEntry.Next != NULL)
     {
         PVAL tempX = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
         ExFreePool(temp); temp = NULL;
         temp = tempX;
     }
-}
+    这段代码发现标头为VVVV的内存有泄露，链表构建一次就泄露一块内存
+    原因在于temp->ValidAddressEntry.Next == NULL的时候最后一块内存没释放
+    所以导致了内存泄漏
+*/
