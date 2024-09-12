@@ -106,6 +106,9 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     IN SIZE_T patternLen,
     OUT PRSL* headRSL
 );
+SIZE_T getNodeNumsForDoubleLinkedList(
+    IN PRSL headRSL
+);
 VOID processHiddenProcedure(
     IN ULONG64 pid
 );
