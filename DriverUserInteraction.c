@@ -7,10 +7,13 @@ __INIT_GLOBAL__DEFINES__;
 static CLIENT_ID g_cid = { 0 };
 static OBJECT_ATTRIBUTES g_kernelProcessObjAttributes = { 0 };
 static HANDLE g_kernelProcess = NULL;
+__INIT_GLOBAL__DEFINES__;
+
+__PROCESS_MEMORY_SPACE_DEFINES__;
 static PVAL g_headVAL = NULL;
 static MEMORY_INFORMATION_CLASS g_MIC = MemoryBasicInformation;
 static MEMORY_BASIC_INFORMATION g_mbi = { 0 };
-__INIT_GLOBAL__DEFINES__;
+__PROCESS_MEMORY_SPACE_DEFINES__;
 
 __SEARCH_OUTCOME_DEFINES__;
 static PRSL g_headRSL = NULL;
@@ -55,38 +58,47 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     PIO_STACK_LOCATION irpSL = IoGetCurrentIrpStackLocation(pIrp);
     ULONG controlCode = irpSL->Parameters.DeviceIoControl.IoControlCode;
     __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
-    if (controlCode == ____$_INITIALIZE_DRIVER_SETTINGS_$____)
+
+    if (controlCode == ____$_INITIZE_PROCESS_HANDLE_$____)
     {
         ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer; //由用户层输入：&ULONG64.
-        DbgPrint("%llx", pid);
         g_cid.UniqueProcess = (HANDLE)pid;
         g_cid.UniqueThread = NULL;
         InitializeObjectAttributes(&g_kernelProcessObjAttributes, NULL, 0, NULL, NULL);
-        ZwOpenProcess(&g_kernelProcess, GENERIC_ALL, &g_kernelProcessObjAttributes, &g_cid);
-        if (NT_SUCCESS(status))
+        if (NT_SUCCESS(ZwOpenProcess(&g_kernelProcess, GENERIC_ALL, &g_kernelProcessObjAttributes, &g_cid)))
         {
-            buildValidAddressSingleList(
-                &g_kernelProcess,
-                &g_MIC,
-                &g_mbi,
-                &g_headVAL,
-                0x00007FFF00000000
-            );
-            getRegionGapAndPages(g_headVAL);
-            //printListVAL(g_headVAL);
             DbgPrint("Driver Initialization Successfully");
-            IOCTL_COMPLETE_MARK(status, 0);
-            return STATUS_SUCCESS;
         }
         else
         {
             DbgPrint("Open File Failed!");
             IOCTL_COMPLETE_MARK(status, 0);
-            return status;
+            return STATUS_UNSUCCESSFUL;
         }
+        IOCTL_COMPLETE_MARK(status, 0);
+        return STATUS_SUCCESS;
+    }
+    else if (controlCode == ____$_INITIALIZE_PROCESS_MEMORY_SPACE_$____)
+    {
+        buildValidAddressSingleList(
+            &g_kernelProcess,
+            &g_MIC,
+            &g_mbi,
+            &g_headVAL,
+            0x00007FFF00000000
+        );
+        getRegionGapAndPages(g_headVAL);
+        DbgPrint("Process Memoty Loading Successfully");
+        IOCTL_COMPLETE_MARK(status, 0);
+        return STATUS_SUCCESS;
     }
     else if (controlCode == ____$_SEARCH_PATTERN_$____)
     {
+        if (g_mostRecentPattern)
+        {
+            ExFreePool(g_mostRecentPattern);
+            g_mostRecentPattern = NULL;
+        }
         PPSI receiveStructPointer = (PPSI)pIrp->AssociatedIrp.SystemBuffer;
         if (receiveStructPointer->isFirstScan)
         {
@@ -111,6 +123,12 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         }
         else 
         {
+            if (g_headRSL == NULL)
+            {
+                NTSTATUS _status = STATUS_INVALID_ADDRESS;
+                IOCTL_COMPLETE_MARK(_status, 0);
+                return _status;
+            }
             if (receiveStructPointer->scanMode == 0)
             {
                 PRSL tempRSL = g_headRSL;
@@ -121,6 +139,8 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
                 {
                     tempBuffer[j] = receiveStructPointer->pattern[j];
                 }
+                g_mostRecentPattern = tempBuffer;
+                g_mostRecentPatternLen = tempBufferLen;
                 PEPROCESS pe = NULL;
                 KAPC_STATE apc = { 0 };
                 PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
@@ -200,12 +220,42 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
                 IOCTL_COMPLETE_MARK(status, 0);
                 return status;
             }
+            //TODO: other scanMode
             else
             {
                 IOCTL_COMPLETE_MARK(status, 0);
                 return status;
             }
         }
+    }
+    else if (controlCode == ____$_UNLOAD_DRIVER_PREPARE_$____)
+    {
+        if (g_headVAL)
+        {
+            ExFreeValidAddressLink(&g_headVAL);
+            g_headVAL = NULL;
+        }
+        if (g_headRSL)
+        {
+            ExFreeResultSavedLink(&g_headRSL);
+            g_headRSL = NULL;
+        }
+        if (g_mostRecentPattern)
+        {
+            ExFreePool(g_mostRecentPattern);
+            g_mostRecentPattern = NULL;
+        }
+        if (g_kernelProcess)
+        {
+            ZwClose(g_kernelProcess);
+        }
+        IOCTL_COMPLETE_MARK(status, 0);
+        return status;
+    }
+    else
+    {
+        IOCTL_COMPLETE_MARK(status, 0);
+        return status;
     }
     IOCTL_COMPLETE_MARK(status, 0);
     return status;
@@ -233,64 +283,3 @@ ULONG checkProtectAttributesForTargetAddress(
     }
     return 0;
 }
-/*
-/*PRSL tempRSL = g_headRSL;
-                PRSL newRSLhead = NULL;
-                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'LLLL');
-                SIZE_T tempBufferLen = receiveStructPointer->patternLen;
-                for (size_t j = 0; j < receiveStructPointer->patternLen; j++)
-                {
-                    tempBuffer[j] = receiveStructPointer->pattern[j];
-                }
-                while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
-                {
-                    if (strncmp((CONST CHAR*)tempRSL->address, (CONST CHAR*)tempBuffer, tempBufferLen) == 0)
-                    {
-                        if (newRSLhead == NULL)
-                        {
-                            newRSLhead = createSavedResultNode(2, tempRSL->address);
-                            if (newRSLhead)
-                            {
-                                newRSLhead->ResultAddressEntry.Flink = &(newRSLhead->ResultAddressEntry);
-                                newRSLhead->ResultAddressEntry.Blink = newRSLhead->ResultAddressEntry.Flink;
-                            }
-                            tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                        }
-                        else
-                        {
-                            PRSL tempLast = newRSLhead;
-                            while (tempLast->ResultAddressEntry.Flink != &(newRSLhead->ResultAddressEntry))
-                            {
-                                tempLast = CONTAINING_RECORD(tempLast->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                            }
-                            PRSL newNode = createSavedResultNode(2, tempRSL->address);
-                            if (newNode)
-                            {
-                                tempLast->ResultAddressEntry.Flink = &(newNode->ResultAddressEntry);
-                                newNode->ResultAddressEntry.Flink = &(newRSLhead->ResultAddressEntry);
-                                newNode->ResultAddressEntry.Blink = &(tempLast->ResultAddressEntry);
-                                newRSLhead->ResultAddressEntry.Blink = &(newNode->ResultAddressEntry);
-                            }
-                        }
-                    }
-                }
-                ExFreeResultSavedLink(&g_headRSL);
-                g_headRSL = newRSLhead;
-                if (g_headRSL == NULL)
-                {
-                    DbgPrint("空链表");
-                    IOCTL_COMPLETE_MARK(status, 0);
-                    return status;
-                }
-                else
-                {
-                    printListRSL(newRSLhead);
-                    IOCTL_COMPLETE_MARK(status, 0);
-                    return status;
-                }
-            }
-            else
-            {
-                IOCTL_COMPLETE_MARK(status, 0);
-                return status;
-            }*/
