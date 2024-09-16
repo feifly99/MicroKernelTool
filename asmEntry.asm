@@ -23,6 +23,19 @@
 		mov cr0, rcx
 		ret
 	__asm__WRrestore ENDP
+
+	__asm__PDTchange PROC ; ULONG64 __asm__PDTbreak(IN ULONG64 newCR3AddressValue, OUT ULONG64* oldCR3Address)
+		mov rax, cr3
+		mov cr3, rcx
+		mov qword ptr [rdx], rax
+		ret
+	__asm__PDTchange ENDP ;返回值：原来CR3的值
+
+	__asm__PDTrestore PROC
+		mov cr3, rcx
+		ret
+	__asm__PDTrestore ENDP
+	
 	;___X64___Only___↑___
 
 	__asm__getEFLregistor PROC
@@ -36,5 +49,15 @@
 		popfq
 		ret
 	__asm__restoreEFLregistor ENDP
+
+	__asm__getImagePathNameAddress PROC
+		mov rax, rcx
+		add rax, 550h
+		mov rax, qword ptr [rax]
+		add rax, 20h
+		mov rax, qword ptr [rax]
+		add rax, 60h
+		ret
+	__asm__getImagePathNameAddress ENDP
 
 END
