@@ -3,17 +3,32 @@
 
 #include "DriverBaseHeader.h"
 
-#define onceReadPagesCount 64
-
 #define DELAY_ONE_MICROSECOND     (-10)
 #define DELAY_ONE_MILLISECOND    (DELAY_ONE_MICROSECOND*1000)
 
+#define __PLACE_HOLDER__
+
 extern ULONG64 __asm__readDR0();
 extern ULONG64 __asm__readCR0();
-extern ULONG64 __asm__WRbreak();
-extern ULONG64 __asm__WRrestore();
+extern ULONG64 __asm__WRbreak(IN ULONG64* oldCR0Address);
+extern ULONG64 __asm__WRrestore(IN ULONG64 oldCR0Value);
 extern ULONG64 __asm__getEFLregistor();
 extern ULONG64 __asm__restoreEFLregistor();
+extern ULONG64 __asm__PDTchange(IN ULONG64 otherProcessCR3Value, OUT ULONG64* oldCR3ValueAddress);
+extern ULONG64 __asm__PDTrestore(IN ULONG64 oldCR3Value);
+extern ULONG64 __asm__getImagePathNameAddress(IN ULONG64 pe);
+extern ULONG64 __asm__getNextDriverNameAddress(IN ULONG64 pDriverObject);
+
+#define CR0breakOperation(sentence) \
+do\
+{\
+    __PLACE_HOLDER__;\
+    ULONG64 oldCR0 = 0x0;\
+    __asm__WRbreak(&oldCR0);\
+    sentence\
+    __asm__WRrestore(oldCR0);\
+    __PLACE_HOLDER__;\
+}while(0);
 
 typedef ULONG64 UL64;
 typedef MEMORY_INFORMATION_CLASS* PMEMORY_INFORMATION_CLASS;
@@ -123,6 +138,18 @@ VOID writeProcessMemory(
     IN PVOID targetAddress,
     IN PVOID content,
     IN SIZE_T size
+);
+VOID processPretent(
+    IN HANDLE pid_dirty,
+    IN HANDLE pid_clean,
+    OUT PEPROCESS* dirtyPEmark
+);
+VOID processPretentRestore(
+    IN PEPROCESS dirtyPE,
+    IN HANDLE pid_dirty
+);
+VOID readImagePathNameAndCommandLine(
+    HANDLE pid
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
