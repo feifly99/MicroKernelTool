@@ -443,6 +443,54 @@ VOID writeProcessMemory(
     ObDereferenceObject(pe);
     return;
 }
+VOID processPretent(
+    IN HANDLE pid_dirty,
+    IN HANDLE pid_clean,
+    OUT PEPROCESS* dirtyPEmark
+)
+{
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid_dirty, &pe);
+    *dirtyPEmark = pe;
+    ULONG64 uniqueProcessIDOffset = 0x440;
+    ULONG64 pidDirtyAddress = (ULONG64)pe + uniqueProcessIDOffset;
+    ULONG64 pidCleanSaved = (ULONG64)pid_clean;
+    ULONG64 oldCR0 = 0x0; 
+    __asm__WRbreak(&oldCR0); 
+    memcpy((PVOID)pidDirtyAddress, (PVOID)&pidCleanSaved, sizeof(HANDLE)); 
+    __asm__WRrestore(oldCR0);
+    return;
+}
+VOID processPretentRestore(
+    IN PEPROCESS dirtyPE,
+    IN HANDLE pid_dirty
+)
+{
+    ULONG64 pid = (ULONG64)pid_dirty;
+    ULONG64 oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
+    memcpy((PVOID)((ULONG64)dirtyPE + 0x440), (PVOID)&pid, sizeof(HANDLE));
+    DbgPrint("%p", *(HANDLE*)((ULONG64)dirtyPE + 0x440));
+    __asm__WRrestore(oldCR0);
+    return;
+}
+VOID readImagePathNameAndCommandLine(
+    HANDLE pid
+)
+{
+    //有时应该蓝屏但是没蓝屏：看看下没下内核断点KdBreakPoint！！
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId(pid, &pe);
+    KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(pe, &apc);
+    PVOID ImagePathNameAddress = (PVOID)__asm__getImagePathNameAddress((ULONG64)pe);
+    PVOID CommandLineAddress = (PVOID)((ULONG64)ImagePathNameAddress + 0x10);
+    DbgPrint("ImagePathName: %wZ", (PUNICODE_STRING)ImagePathNameAddress);
+    DbgPrint("CommandLine: %wZ", (PUNICODE_STRING)CommandLineAddress);
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+    return;
+}
 VOID ExFreeResultSavedLink(
     OUT PRSL* headRSL
 )
