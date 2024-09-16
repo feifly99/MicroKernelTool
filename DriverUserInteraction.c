@@ -1,5 +1,23 @@
 #include "DriverUserInteraction.h"
 
+#pragma warning(disable:6387)
+#pragma warning(disable:6011)
+
+__INIT_GLOBAL__DEFINES__;
+static CLIENT_ID g_cid = { 0 };
+static OBJECT_ATTRIBUTES g_kernelProcessObjAttributes = { 0 };
+static HANDLE g_kernelProcess = NULL;
+static PVAL g_headVAL = NULL;
+static MEMORY_INFORMATION_CLASS g_MIC = MemoryBasicInformation;
+static MEMORY_BASIC_INFORMATION g_mbi = { 0 };
+__INIT_GLOBAL__DEFINES__;
+
+__SEARCH_OUTCOME_DEFINES__;
+static PRSL g_headRSL = NULL;
+static PUCHAR g_mostRecentPattern = NULL;
+static SIZE_T g_mostRecentPatternLen = 0x0;
+__SEARCH_OUTCOME_DEFINES__;
+
 NTSTATUS myCreate(
     IN PDEVICE_OBJECT pDeviceObject,
     IN PIRP pIrp
@@ -31,269 +49,166 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     IN PIRP pIrp
 )
 {
+    __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
+    NTSTATUS status = STATUS_SUCCESS;
     UNREFERENCED_PARAMETER(devObj);
     PIO_STACK_LOCATION irpSL = IoGetCurrentIrpStackLocation(pIrp);
-    ULONG IOCTL_CODE = irpSL->Parameters.DeviceIoControl.IoControlCode;
-    NTSTATUS status = STATUS_SUCCESS;
-    if (pIrp->AssociatedIrp.SystemBuffer == NULL)
+    ULONG controlCode = irpSL->Parameters.DeviceIoControl.IoControlCode;
+    __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
+    if (controlCode == ____$_INITIALIZE_DRIVER_SETTINGS_$____)
     {
-        DbgPrint("NULL memory!");
-        return STATUS_UNSUCCESSFUL;
-    }
-    if (IOCTL_CODE == ____$_LIST_MEMORY_$____)
-    {
-        DbgPrint("____$_LIST_MEMORY_$____");
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _ValidAddressList_DriverUserInteraction
-            {
-                USER_IN HANDLE pid;
-            }VAL_DUI, *PVAL_DUI;
-        */
-        PVAL_UI buffer_LIST_MEMORY = (PVAL_UI)pIrp->AssociatedIrp.SystemBuffer;
-        __PLACE_HOLDER__;
-        HANDLE kernel_hProcess = NULL;
-        CLIENT_ID cid = { 0 };
-        cid.UniqueProcess = (HANDLE)buffer_LIST_MEMORY->pid;
-        cid.UniqueThread = NULL;
-        OBJECT_ATTRIBUTES objAttrs;
-        InitializeObjectAttributes(&objAttrs, NULL, 0, NULL, NULL);
-        ZwOpenProcess(&kernel_hProcess, GENERIC_ALL, &objAttrs, &cid);
-        __PLACE_HOLDER__;
-        PVAL headVAL = NULL;
-        MEMORY_INFORMATION_CLASS MIC = MemoryBasicInformation;
-        MEMORY_BASIC_INFORMATION mbi = { 0 };
-        buildValidAddressSingleList(
-            &kernel_hProcess,
-            &MIC,
-            &mbi,
-            &headVAL,
-            0x00007FFF00000000
-        );
-        getRegionGapAndPages(headVAL);
-        //printListVAL(headVAL);
-        ExFreeValidAddressLink(&headVAL);
-        ZwClose(kernel_hProcess);
-        IOCTL_COMPLETE_MARK(status, 0);
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
-    }
-    else if (IOCTL_CODE == ____$_GET_PATTERN_NUM_$____)
-    {
-        DbgPrint("____$_GET_PATTERN_NUM_$____");
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _ResultSavedList_DriverUserInteraction
-            {
-                USER_IN HANDLE pid;
-                USER_IN PUCHAR pattern;
-                USER_IN SIZE_T patternLen;
-            }RSL_DUI, *PRSL_DUI;
-        */
-        PRSL_UI buffer_SEARCH_PATTERN = (PRSL_UI)pIrp->AssociatedIrp.SystemBuffer;
-        __PLACE_HOLDER__;
-        HANDLE kernel_hProcess = NULL;
-        CLIENT_ID cid = { 0 };
-        cid.UniqueProcess = (HANDLE)buffer_SEARCH_PATTERN->pid;
-        cid.UniqueThread = NULL;
-        OBJECT_ATTRIBUTES objAttrs;
-        InitializeObjectAttributes(&objAttrs, NULL, 0, NULL, NULL);
-        ZwOpenProcess(&kernel_hProcess, GENERIC_ALL, &objAttrs, &cid);
-        __PLACE_HOLDER__;
-        PVAL headVAL = NULL;
-        MEMORY_INFORMATION_CLASS MIC = MemoryBasicInformation;
-        MEMORY_BASIC_INFORMATION mbi = { 0 };
-        buildValidAddressSingleList(
-            &kernel_hProcess,
-            &MIC,
-            &mbi,
-            &headVAL,
-            0x00007FFF00000000
-        );
-        getRegionGapAndPages(headVAL);
-        ZwClose(kernel_hProcess);
-        PRSL headRSL = NULL;
-        PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, buffer_SEARCH_PATTERN->patternLen, 'ABCD');
-        //【完全释放】
-        for (size_t j = 0; j < buffer_SEARCH_PATTERN->patternLen && tempBuffer; j++)
+        ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer; //由用户层输入：&ULONG64.
+        DbgPrint("%llx", pid);
+        g_cid.UniqueProcess = (HANDLE)pid;
+        g_cid.UniqueThread = NULL;
+        InitializeObjectAttributes(&g_kernelProcessObjAttributes, NULL, 0, NULL, NULL);
+        ZwOpenProcess(&g_kernelProcess, GENERIC_ALL, &g_kernelProcessObjAttributes, &g_cid);
+        if (NT_SUCCESS(status))
         {
-            tempBuffer[j] = buffer_SEARCH_PATTERN->pattern[j];
+            buildValidAddressSingleList(
+                &g_kernelProcess,
+                &g_MIC,
+                &g_mbi,
+                &g_headVAL,
+                0x00007FFF00000000
+            );
+            getRegionGapAndPages(g_headVAL);
+            //printListVAL(g_headVAL);
+            DbgPrint("Driver Initialization Successfully");
+            IOCTL_COMPLETE_MARK(status, 0);
+            return STATUS_SUCCESS;
         }
-        buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
-            (ULONG64)buffer_SEARCH_PATTERN->pid,
-            headVAL,
-            (PUCHAR)tempBuffer,
-            (SIZE_T)buffer_SEARCH_PATTERN->patternLen,
-            &headRSL
-        );
-        //printListRSL(headRSL);
-        SIZE_T cnt = getNodeNumsForDoubleLinkedList(headRSL);
-        memcpy(pIrp->AssociatedIrp.SystemBuffer, &cnt, sizeof(SIZE_T));
-        if (tempBuffer)
+        else
         {
-            ExFreePool(tempBuffer);
+            DbgPrint("Open File Failed!");
+            IOCTL_COMPLETE_MARK(status, 0);
+            return status;
         }
-        ExFreeResultSavedLink(&headRSL);
-        ExFreeValidAddressLink(&headVAL);
-        IOCTL_COMPLETE_MARK(status, sizeof(SIZE_T));
-        //IOCTL_COMPLETE_MARK要诚实地返回应当返回多少的字节数！
-        //用户驱动交互出现IRQL问题：看看用户空间给的返回缓冲区够不够大，不够大就会出现IRQL！
-        //用户空间不够大除了IRQL问题之外还可能出现SYSTEM_THREAD_NOT_HANDLED蓝屏代码。
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
     }
-    else if (IOCTL_CODE == ____$_SEARCH_PATTERN_$____)
+    else if (controlCode == ____$_SEARCH_PATTERN_$____)
     {
-        DbgPrint("____$_SEARCH_PATTERN_$____");
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _ResultSavedList_DriverUserInteraction
+        PPSI receiveStructPointer = (PPSI)pIrp->AssociatedIrp.SystemBuffer;
+        if (receiveStructPointer->isFirstScan)
+        {
+            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'PPPP');
+            SIZE_T tempBufferLen = receiveStructPointer->patternLen;
+            for (size_t j = 0; j < receiveStructPointer->patternLen; j++)
             {
-                USER_IN HANDLE pid;
-                USER_IN PUCHAR pattern;
-                USER_IN SIZE_T patternLen;
-            }RSL_DUI, *PRSL_DUI;
-        */
-        PRSL_UI buffer_SEARCH_PATTERN = (PRSL_UI)pIrp->AssociatedIrp.SystemBuffer;
-        __PLACE_HOLDER__;
-        HANDLE kernel_hProcess = NULL;
-        CLIENT_ID cid = { 0 };
-        cid.UniqueProcess = (HANDLE)buffer_SEARCH_PATTERN->pid;
-        cid.UniqueThread = NULL;
-        OBJECT_ATTRIBUTES objAttrs;
-        InitializeObjectAttributes(&objAttrs, NULL, 0, NULL, NULL);
-        ZwOpenProcess(&kernel_hProcess, GENERIC_ALL, &objAttrs, &cid);
-        __PLACE_HOLDER__;
-        PVAL headVAL = NULL;
-        MEMORY_INFORMATION_CLASS MIC = MemoryBasicInformation;
-        MEMORY_BASIC_INFORMATION mbi = { 0 };
-        buildValidAddressSingleList(
-            &kernel_hProcess,
-            &MIC,
-            &mbi,
-            &headVAL,
-            0x00007FFF00000000
-        );
-        getRegionGapAndPages(headVAL);
-        ZwClose(kernel_hProcess);
-        PRSL headRSL = NULL;
-        PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, buffer_SEARCH_PATTERN->patternLen, 'ABCD');
-        //【完全释放】
-        for (size_t j = 0; j < buffer_SEARCH_PATTERN->patternLen && tempBuffer; j++)
-        {
-            tempBuffer[j] = buffer_SEARCH_PATTERN->pattern[j];
+                tempBuffer[j] = receiveStructPointer->pattern[j];
+            }
+            g_mostRecentPattern = tempBuffer;
+            g_mostRecentPatternLen = tempBufferLen;
+            buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
+                (ULONG64)g_cid.UniqueProcess,
+                g_headVAL,
+                g_mostRecentPattern,
+                g_mostRecentPatternLen,
+                &g_headRSL
+            );
+            printListRSL(g_headRSL);
+            IOCTL_COMPLETE_MARK(status, 0);
+            return status;
         }
-        buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
-            (ULONG64)buffer_SEARCH_PATTERN->pid,
-            headVAL,
-            (PUCHAR)tempBuffer,
-            (SIZE_T)buffer_SEARCH_PATTERN->patternLen,
-            &headRSL
-        );
-        //printListRSL(headRSL);
-        SIZE_T cnt = getNodeNumsForDoubleLinkedList(headRSL);
-        PRSL_DO ret = (PRSL_DO)ExAllocatePoolWithTag(PagedPool, cnt * sizeof(RSL_DO), 'FFYA');
-        PRSL tempRSL = headRSL;
-        for (size_t j = 0; j < cnt && ret; j++)
+        else 
         {
-            ret[j].times = tempRSL->times;
-            ret[j].address = tempRSL->address;
-            ret[j].protect = checkProtectAttributesForTargetAddress(headVAL, (PVOID)tempRSL->address);
-            tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-        }
-        if(ret)
-        {
-            memcpy(pIrp->AssociatedIrp.SystemBuffer, ret, cnt * sizeof(RSL_DO));
-        }
-        if(ret && tempBuffer)
-        {
-            ExFreePool(tempBuffer);
-            ExFreePool(ret);
-        }
-        ExFreeResultSavedLink(&headRSL);
-        ExFreeValidAddressLink(&headVAL);
-        IOCTL_COMPLETE_MARK(status, cnt * sizeof(RSL_DO));
-        //IOCTL_COMPLETE_MARK要诚实地返回应当返回多少的字节数！
-        //用户驱动交互出现IRQL问题：看看用户空间给的返回缓冲区够不够大，不够大就会出现IRQL！
-        //用户空间不够大除了IRQL问题之外还可能出现SYSTEM_THREAD_NOT_HANDLED蓝屏代码。
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
-    }
-    else if (IOCTL_CODE == ____$_LIST_PROCESS_MODULE_$____)
-    {
-        DbgPrint("____$_LIST_PROCESS_MODULE_$____");
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _ListProcessModule_DriverUserInteraction
+            if (receiveStructPointer->scanMode == 0)
             {
-                USER_IN HANDLE pid;
-            }LPM_DUI, *PLPM_DUI;
-        */
-        PLPM_UI buffer_LIST_PROCESS_MODULE = (PLPM_UI)pIrp->AssociatedIrp.SystemBuffer;
-        displayAllModuleInfomationByProcessId((ULONG64)buffer_LIST_PROCESS_MODULE->pid);
-        IOCTL_COMPLETE_MARK(status, 0);
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
-    }
-    else if (IOCTL_CODE == ____$_LIST_PROCESS_THREAD_$____)
-    {
-        DbgPrint("____$_LIST_PROCESS_THREAD_$____");
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _ListProcessThread_DriverUserInteraction
+                PRSL tempRSL = g_headRSL;
+                PRSL newRSLhead = NULL;
+                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'LLLL');
+                SIZE_T tempBufferLen = receiveStructPointer->patternLen;
+                for (size_t j = 0; j < receiveStructPointer->patternLen; j++)
+                {
+                    tempBuffer[j] = receiveStructPointer->pattern[j];
+                }
+                PEPROCESS pe = NULL;
+                KAPC_STATE apc = { 0 };
+                PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
+                KeStackAttachProcess(pe, &apc);
+                while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+                {
+                    if (isSame((PUCHAR)tempRSL->address, tempBuffer, tempBufferLen))
+                    {
+                        if (newRSLhead == NULL)
+                        {
+                            newRSLhead = createSavedResultNode(2, tempRSL->address);
+                            if (newRSLhead)
+                            {
+                                (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
+                                (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
+                            }
+                        }
+                        else
+                        {
+                            PRSL temp = newRSLhead;
+                            while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
+                            {
+                                temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+                            }
+                            PRSL newNode = createSavedResultNode(2, tempRSL->address);
+                            if (newNode)
+                            {
+                                temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
+                                newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
+                                newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
+                                (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
+                            }
+                        }
+                    }
+                    tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+                }
+                if (isSame((PUCHAR)tempRSL->address, tempBuffer, tempBufferLen))
+                {
+                    if (newRSLhead == NULL)
+                    {
+                        newRSLhead = createSavedResultNode(3, tempRSL->address);
+                        if (newRSLhead)
+                        {
+                            (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
+                            (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
+                        }
+                    }
+                    else
+                    {
+                        PRSL temp = newRSLhead;
+                        while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
+                        {
+                            temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+                        }
+                        PRSL newNode = createSavedResultNode(33333, tempRSL->address);
+                        if (newNode)
+                        {
+                            temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
+                            newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
+                            newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
+                            (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
+                        }
+                    }
+                }
+                KeUnstackDetachProcess(&apc);
+                ObDereferenceObject(pe);
+                ExFreeResultSavedLink(&g_headRSL);
+                g_headRSL = newRSLhead;
+                if (g_headRSL)
+                {
+                    printListRSL(g_headRSL);
+                }
+                else
+                {
+                    DbgPrint("空链表！");
+                }
+                IOCTL_COMPLETE_MARK(status, 0);
+                return status;
+            }
+            else
             {
-                USER_IN HANDLE pid;
-            }LPT_DUI, * PLPT_DUI;
-        */
-        PLPT_UI buffer_LIST_PROCESS_THREAD = (PLPT_UI)pIrp->AssociatedIrp.SystemBuffer;
-        displayAllThreadInfomationByProcessId((ULONG64)buffer_LIST_PROCESS_THREAD->pid);
-        IOCTL_COMPLETE_MARK(status, 0);
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
+                IOCTL_COMPLETE_MARK(status, 0);
+                return status;
+            }
+        }
     }
-    else if (IOCTL_CODE == ____$_WRITE_PROCESS_MEMORY_$____)
-    {
-        __PLACE_HOLDER__;
-        /*
-            Current pIrp->AssociatedIrp.SystemBuffer struct be like:
-            typedef struct _WriteProcessMemory_DriverUserInteraction
-            {
-                USER_IN HANDLE pid;
-                USER_IN PVOID targetAddress;
-                USER_IN PVOID content;
-                USER_IN SIZE_T writeLen;
-            }WPM_DUI, * PWPM_DUI;
-        */
-        PWPM_UI buffer_WRITE_PROCESS_MEMORY = (PWPM_UI)pIrp->AssociatedIrp.SystemBuffer;
-        __PLACE_HOLDER__;
-        HANDLE kernel_hProcess = NULL;
-        CLIENT_ID cid = { 0 };
-        cid.UniqueProcess = (HANDLE)buffer_WRITE_PROCESS_MEMORY->pid;
-        cid.UniqueThread = NULL;
-        OBJECT_ATTRIBUTES objAttrs;
-        InitializeObjectAttributes(&objAttrs, NULL, 0, NULL, NULL);
-        ZwOpenProcess(&kernel_hProcess, GENERIC_ALL, &objAttrs, &cid);
-        __PLACE_HOLDER__;
-        writeProcessMemory(
-            (ULONG64)buffer_WRITE_PROCESS_MEMORY->pid,
-            (PVOID)buffer_WRITE_PROCESS_MEMORY->targetAddress,
-            (PVOID)buffer_WRITE_PROCESS_MEMORY->content,
-            (SIZE_T)buffer_WRITE_PROCESS_MEMORY->writeLen
-        );
-        ZwClose(kernel_hProcess);
-        IOCTL_COMPLETE_MARK(status, 0);
-        __PLACE_HOLDER__;
-        return STATUS_SUCCESS;
-    }
-    else
-    {
-        return STATUS_UNSUCCESSFUL;
-    }
+    IOCTL_COMPLETE_MARK(status, 0);
+    return status;
 }
 ULONG checkProtectAttributesForTargetAddress(
     PVAL headVAL,
@@ -318,3 +233,64 @@ ULONG checkProtectAttributesForTargetAddress(
     }
     return 0;
 }
+/*
+/*PRSL tempRSL = g_headRSL;
+                PRSL newRSLhead = NULL;
+                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'LLLL');
+                SIZE_T tempBufferLen = receiveStructPointer->patternLen;
+                for (size_t j = 0; j < receiveStructPointer->patternLen; j++)
+                {
+                    tempBuffer[j] = receiveStructPointer->pattern[j];
+                }
+                while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+                {
+                    if (strncmp((CONST CHAR*)tempRSL->address, (CONST CHAR*)tempBuffer, tempBufferLen) == 0)
+                    {
+                        if (newRSLhead == NULL)
+                        {
+                            newRSLhead = createSavedResultNode(2, tempRSL->address);
+                            if (newRSLhead)
+                            {
+                                newRSLhead->ResultAddressEntry.Flink = &(newRSLhead->ResultAddressEntry);
+                                newRSLhead->ResultAddressEntry.Blink = newRSLhead->ResultAddressEntry.Flink;
+                            }
+                            tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+                        }
+                        else
+                        {
+                            PRSL tempLast = newRSLhead;
+                            while (tempLast->ResultAddressEntry.Flink != &(newRSLhead->ResultAddressEntry))
+                            {
+                                tempLast = CONTAINING_RECORD(tempLast->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+                            }
+                            PRSL newNode = createSavedResultNode(2, tempRSL->address);
+                            if (newNode)
+                            {
+                                tempLast->ResultAddressEntry.Flink = &(newNode->ResultAddressEntry);
+                                newNode->ResultAddressEntry.Flink = &(newRSLhead->ResultAddressEntry);
+                                newNode->ResultAddressEntry.Blink = &(tempLast->ResultAddressEntry);
+                                newRSLhead->ResultAddressEntry.Blink = &(newNode->ResultAddressEntry);
+                            }
+                        }
+                    }
+                }
+                ExFreeResultSavedLink(&g_headRSL);
+                g_headRSL = newRSLhead;
+                if (g_headRSL == NULL)
+                {
+                    DbgPrint("空链表");
+                    IOCTL_COMPLETE_MARK(status, 0);
+                    return status;
+                }
+                else
+                {
+                    printListRSL(newRSLhead);
+                    IOCTL_COMPLETE_MARK(status, 0);
+                    return status;
+                }
+            }
+            else
+            {
+                IOCTL_COMPLETE_MARK(status, 0);
+                return status;
+            }*/
