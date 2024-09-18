@@ -35,6 +35,7 @@
 		mov cr3, rcx
 		ret
 	__asm__PDTrestore ENDP
+	
 	;___X64___Only___↑___
 
 	__asm__getEFLregistor PROC
