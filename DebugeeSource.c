@@ -35,7 +35,9 @@ PVAL createValidAddressNode(
 }
 PRSL createSavedResultNode(
     IN ULONG times,
-    IN ULONG64 address
+    IN ULONG64 address,
+    IN ULONG64 addressBufferLen,
+    IN PVAL headVAL
 )
 {
     PRSL newNode = (PRSL)ExAllocatePoolWithTag(PagedPool, sizeof(RSL), 'VVVV');
@@ -43,6 +45,41 @@ PRSL createSavedResultNode(
     {
         newNode->times = times;
         newNode->address = address;
+        newNode->rslAddressBufferLen = addressBufferLen;
+        PVAL tempVAL = headVAL;
+        while (tempVAL->ValidAddressEntry.Next != NULL)
+        {
+            if (newNode->address <= tempVAL->endAddress && newNode->address >= tempVAL->beginAddress)
+            {
+                newNode->thisNodeAddressPageMaxValidAddress = tempVAL->endAddress;
+                break;
+            }
+            else
+            {
+                tempVAL = CONTAINING_RECORD(tempVAL->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+            }
+        }
+        if (newNode->rslAddressBufferLen)
+        {
+            if(newNode->address + newNode->rslAddressBufferLen <= newNode->thisNodeAddressPageMaxValidAddress)
+            {
+                newNode->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newNode->rslAddressBufferLen, 'DDDD');
+                for (size_t j = 0; j < newNode->rslAddressBufferLen && newNode->buffer; j++)
+                {
+                    newNode->buffer[j] = *(UCHAR*)((ULONG64)address + j);
+                }
+            }
+            else
+            {
+                DbgPrint("Warning: This address attach %llu length will touch this page's valid address max limit!", newNode->rslAddressBufferLen);
+                DbgPrint("Warning: For safety, set this node's buffer as NULL!");
+                newNode->buffer = NULL;
+            }
+        }
+        else
+        {
+            newNode->buffer = NULL;
+        }
         newNode->ResultAddressEntry.Flink = NULL;
         newNode->ResultAddressEntry.Blink = NULL;
     }
@@ -114,6 +151,7 @@ VOID KMP_searchPattern(
     IN SIZE_T desLen,
     IN SIZE_T patLen,
     IN ULONG64 pageBeginAddress,
+    IN PVAL headVAL,
     OUT UL64* lpsAddress,
     OUT PRSL* headRSL
 )
@@ -136,7 +174,7 @@ VOID KMP_searchPattern(
             //DbgPrint("在地址%llx匹配成功\n", (ULONG64)(pageBeginAddress + i - j));
             if (*headRSL == NULL)
             {
-                *headRSL = createSavedResultNode(1, (ULONG64)(pageBeginAddress + i - j));
+                *headRSL = createSavedResultNode(1, (ULONG64)(pageBeginAddress + i - j), patLen, headVAL);
                 if (*headRSL)
                 {
                     (*headRSL)->ResultAddressEntry.Flink = &((*headRSL)->ResultAddressEntry);
@@ -150,7 +188,7 @@ VOID KMP_searchPattern(
                 {
                     temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
                 }
-                PRSL newNode = createSavedResultNode(1, (ULONG64)(pageBeginAddress + i - j));
+                PRSL newNode = createSavedResultNode(1, (ULONG64)(pageBeginAddress + i - j), patLen, headVAL);
                 if (newNode)
                 {
                     temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
@@ -194,6 +232,31 @@ BOOLEAN isSame(
     }
     return 1;
 }
+BOOLEAN checkAllRSLAddressLenValid(
+    PRSL headRSL
+)
+{
+    PRSL temp = headRSL;
+    while (temp->ResultAddressEntry.Flink != &headRSL->ResultAddressEntry)
+    {
+        if (temp->rslAddressBufferLen == 0)
+        {
+            return 0;
+        }
+        else
+        {
+            temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+        }
+    }
+    if (temp->rslAddressBufferLen == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
+}
 VOID printListVAL(
     IN PVAL headVAL
 )
@@ -206,6 +269,7 @@ VOID printListVAL(
         DbgPrint("ListNodeIndex: 0x%llx, begin: 0x%p\t end: 0x%p\t regionGap: 0x%llx\t pageNums: 0x%llx\t memState: %lx\t memProtect: %lx\t", cnt, (PVOID)temp->beginAddress, (PVOID)temp->endAddress, temp->regionGap, temp->pageNums, temp->memoryState, temp->memoryProtectAttributes);
         temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
     }
+    DbgPrint("ListNodeIndex: 0x%llx, begin: 0x%p\t end: 0x%p\t regionGap: 0x%llx\t pageNums: 0x%llx\t memState: %lx\t memProtect: %lx\t", cnt, (PVOID)temp->beginAddress, (PVOID)temp->endAddress, temp->regionGap, temp->pageNums, temp->memoryState, temp->memoryProtectAttributes);
     return;
 }
 VOID printListRSL(
@@ -219,6 +283,10 @@ VOID printListRSL(
         temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
     }
     DbgPrint("times: %ld, address: %p", temp->times, (PVOID)temp->address);
+    for (size_t j = 0; j < temp->rslAddressBufferLen; j++)
+    {
+        DbgPrint("%hhx", temp->buffer[j]);
+    }
 }
 VOID ReadBuffer(
     IN PVOID bufferHead,
@@ -247,6 +315,25 @@ VOID ReadBuffer(
             *(UCHAR*)(temp + j + 15)
         );
     }
+}
+UCHAR farBytesDiffer(
+    PUCHAR oldPattern,
+    PUCHAR newPattern,
+    SIZE_T minSize
+)
+{
+    for (SSIZE_T j = minSize - 1; j >= 0; j--)
+    {
+        if (*(UCHAR*)((ULONG64)oldPattern + j) == *(UCHAR*)((ULONG64)newPattern + j))
+        {
+            continue;
+        }
+        else
+        {
+            return ((*(UCHAR*)((ULONG64)oldPattern + j)) >= *((UCHAR*)((ULONG64)newPattern + j))) ? 1 : 2;
+        }
+    }
+    return 0;
 }
 VOID buildValidAddressSingleList(
     IN PHANDLE phProcess,
@@ -336,7 +423,7 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
             continue; //此时出现bugcheck导致KMP搜索不会执行，因此也不会分配next数组内存，因此不用ExFreePool(addressNeedFree)，直接进行下一个链表节点就行了。
             //[!]【在except结束后，要么加上return STATUS_UNSUCCESSFUL！要么goto到下一块！双重detachAPC会蓝屏，而且此BUG不是次次都有，不定时出现！】
         }
-        KMP_searchPattern((CONST UCHAR*)bufferReceive, (CONST UCHAR*)pattern, temp->pageNums * 4096, patternLen, temp->beginAddress, &addressNeedFree, headRSL);
+        KMP_searchPattern((CONST UCHAR*)bufferReceive, (CONST UCHAR*)pattern, temp->pageNums * 4096, patternLen, temp->beginAddress, headVAL, &addressNeedFree, headRSL);
         ExFreePool((PVOID)bufferReceive); bufferReceive = NULL;
         ExFreePool((PVOID)addressNeedFree); addressNeedFree = (UL64)NULL;
         temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
@@ -502,7 +589,12 @@ VOID ExFreeResultSavedLink(
         PRSL tempX = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
         tempRSL->ResultAddressEntry.Flink = NULL;
         tempRSL->ResultAddressEntry.Blink = NULL;
-        ExFreePool(tempRSL); tempRSL = NULL;
+        if (tempRSL->buffer)
+        {
+            ExFreePool(tempRSL->buffer);
+            tempRSL->buffer = NULL;
+        }
+        ExFreePool(tempRSL); 
         tempRSL = tempX;
     }
 }
