@@ -50,6 +50,9 @@ typedef struct _ResultSavedList
 {
     ULONG times;
     ULONG64 address;
+    ULONG64 rslAddressBufferLen;
+    ULONG64 thisNodeAddressPageMaxValidAddress;
+    PUCHAR buffer;
     LIST_ENTRY ResultAddressEntry;
 }RSL, * PRSL, ** PPRSL;
 
@@ -65,7 +68,9 @@ PVAL createValidAddressNode(
 );
 PRSL createSavedResultNode(
     IN ULONG times,
-    IN ULONG64 address
+    IN ULONG64 address,
+    IN ULONG64 addressBufferLen,
+    IN PVAL headVAL
 );
 VOID getRegionGapAndPages(
     //此函数补全VAL结构的regionGap和pageNums成员
@@ -86,7 +91,8 @@ VOID KMP_searchPattern(
     IN SIZE_T desLen,
     IN SIZE_T patLen,
     IN ULONG64 pageBeginAddress,
-    OUT UL64* lpsAddress, 
+    IN PVAL headVAL,
+    OUT UL64* lpsAddress,
     OUT PRSL* headRSL
 );
 //Debug judge and output
@@ -94,6 +100,9 @@ BOOLEAN isSame(
     IN PUCHAR A, 
     IN PUCHAR B,
     IN SIZE_T size
+);
+BOOLEAN checkAllRSLAddressLenValid(
+    PRSL headRSL
 );
 VOID printListVAL(
     IN PVAL headVAL
@@ -104,6 +113,11 @@ VOID printListRSL(
 VOID ReadBuffer(
     IN PVOID bufferHead,
     IN SIZE_T size
+);
+UCHAR farBytesDiffer(
+    PUCHAR oldPattern,
+    PUCHAR newPattern,
+    SIZE_T minSize
 );
 //Single&Double linked list built
 VOID buildValidAddressSingleList(
