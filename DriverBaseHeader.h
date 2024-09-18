@@ -8,5 +8,7 @@
 #include <wdm.h>
 
 #define IN_OUT
+#define GLOBAL
+#define LOCAL
 
 #endif
