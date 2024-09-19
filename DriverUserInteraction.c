@@ -84,12 +84,27 @@ NTSTATUS continueSearchMode_Precise(
             //注意：断链时，只是把temp后面那个节点删除并释放掉，temp循环变量是不动的。
             curr->ResultAddressEntry.Blink->Flink = curr->ResultAddressEntry.Flink;
             curr->ResultAddressEntry.Flink->Blink = curr->ResultAddressEntry.Blink;
+            if (curr->buffer != NULL)
+            {
+                ExFreePool(curr->buffer);
+                curr->buffer = NULL;
+            }
             ExFreePool(curr);
             curr = NULL;
         }
         else
         {
             //如果不断链才会移动temp循环变量。
+            if (curr->buffer != NULL)
+            {
+                ExFreePool(curr->buffer);
+                curr->rslAddressBufferLen = newReceivedPatternLen;
+                curr->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newReceivedPatternLen, 'BBBB');
+                for (size_t j = 0; j < newReceivedPatternLen; j++)
+                {
+                    curr->buffer[j] = newReceivedPattern[j];
+                }
+            }
             temp = temp->Flink;
         }
     }
@@ -303,7 +318,6 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     PIO_STACK_LOCATION irpSL = IoGetCurrentIrpStackLocation(pIrp);
     ULONG controlCode = irpSL->Parameters.DeviceIoControl.IoControlCode;
     __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
-
     if (controlCode == ____$_INITIZE_PROCESS_HANDLE_$____)
     {
         ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer; //由用户层输入：&ULONG64.
@@ -369,6 +383,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             {
                 DbgPrint("第一次没搜到");
                 //没搜到，把最近一次的长度置0：
+                ExFreePool(tempBuffer);
                 g_mostRecentPatternLen = 0x0;
                 IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
                 return STATUS_UNSUCCESSFUL;
@@ -439,6 +454,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     }
     else if (controlCode == ____$_STOP_SEARCH_PATTERN_$____)
     {
+        //KeBugCheckEx(0X12345678, 0, 0, 0, 0);
         if (g_headRSL)
         {
             ExFreeResultSavedLink(&g_headRSL);
@@ -448,8 +464,44 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
         return STATUS_SUCCESS;
     }
+    else if (controlCode == ____$_LIST_PROCESS_MODULE_$____)
+    {
+        displayAllModuleInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
+        return STATUS_SUCCESS;
+    }
+    else if (controlCode == ____$_LIST_PROCESS_THREAD_$____)
+    {
+        displayAllThreadInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
+        return STATUS_SUCCESS;
+    }
+    else if (controlCode == ____$_WRITE_PROCESS_MEMORY_$____)
+    {
+        PWPMI inputBuffer = (PWPMI)pIrp->AssociatedIrp.SystemBuffer;
+        if (inputBuffer)
+        {
+            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'ZZZZ');
+            for (SIZE_T j = 0; j < inputBuffer->writeMemoryLength && tempBuffer; j++)
+            {
+                tempBuffer[j] = *(UCHAR*)((ULONG64)(inputBuffer->writeBuffer) + j);
+            }
+            writeProcessMemory((ULONG64)g_cid.UniqueProcess, inputBuffer->writeBeginAddress, (PVOID)tempBuffer, inputBuffer->writeMemoryLength);
+            ExFreePool(tempBuffer);
+            IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
+            return STATUS_SUCCESS;
+        }
+        else
+        {
+            DbgPrint("Null input, driver close.");
+            IOCTL_COMPLETE_MARK(STATUS_INVALID_ADDRESS, 0);
+            return STATUS_INVALID_ADDRESS;
+        }
+    }
     else if (controlCode == ____$_UNLOAD_DRIVER_PREPARE_$____)
     {
+        //KeBugCheckEx(0X9ABCDEF0, 0, 0, 0, 0);
+        DbgPrint("here!");
         if (g_headVAL)
         {
             ExFreeValidAddressLink(&g_headVAL);
@@ -470,8 +522,8 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     }
     else
     {
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
+        IOCTL_COMPLETE_MARK(STATUS_INVALID_LABEL, 0);
+        return STATUS_INVALID_LABEL;
     }
 }
 ULONG checkProtectAttributesForTargetAddress(
