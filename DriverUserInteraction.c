@@ -62,93 +62,62 @@ NTSTATUS continueSearchMode_Precise(
     //走到这儿是准确搜索，用不到上一次最近的字符串信息
     //直接更新新字符串长度到全局变量：
     g_mostRecentPatternLen = newReceivedPatternLen;
-    //链表遍历：
-    PRSL tempRSL = g_headRSL;
-    PRSL newRSLhead = NULL;
+    //链表遍历，定义一个临时虚拟双链表头：
+    LIST_ENTRY virtualListHead = { 0 };
+    //置虚拟链表头为真正的链表头：
+    virtualListHead.Flink = &g_headRSL->ResultAddressEntry;
+    CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry.Flink = &virtualListHead;
+    virtualListHead.Blink = &CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry;
+    g_headRSL->ResultAddressEntry.Blink = &virtualListHead;
     PEPROCESS pe = NULL;
     KAPC_STATE apc = { 0 };
+    //定义循环变量temp：
+    PLIST_ENTRY temp = &virtualListHead;
     PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
     KeStackAttachProcess(pe, &apc);
-    while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+    while (temp->Flink != &virtualListHead)
     {
-        if (isSame((PUCHAR)tempRSL->address, newReceivedPattern, newReceivedPatternLen))
+        //如果temp的下一个对应节点的地址和条件不匹配，那么断链：
+        PRSL curr = CONTAINING_RECORD(temp->Flink, RSL, ResultAddressEntry);
+        if (strncmp((PVOID)curr->address, (PVOID)newReceivedPattern, newReceivedPatternLen) != 0)
         {
-            if (newRSLhead == NULL)
-            {
-                newRSLhead = createSavedResultNode(2, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newRSLhead)
-                {
-                    (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-                }
-            }
-            else
-            {
-                PRSL temp = newRSLhead;
-                while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-                {
-                    temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                }
-                PRSL newNode = createSavedResultNode(2, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newNode)
-                {
-                    temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                    newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                    (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-                }
-            }
-        }
-        memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-        tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-    }
-    //上面的while不会遍历到最后一个节点。这是对链表的最后一个节点进行判断。重复逻辑，不用管：
-    if (isSame((PUCHAR)tempRSL->address, newReceivedPattern, newReceivedPatternLen))
-    {
-        if (newRSLhead == NULL)
-        {
-            newRSLhead = createSavedResultNode(2, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newRSLhead)
-            {
-                (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-            }
+            //注意：断链时，只是把temp后面那个节点删除并释放掉，temp循环变量是不动的。
+            curr->ResultAddressEntry.Blink->Flink = curr->ResultAddressEntry.Flink;
+            curr->ResultAddressEntry.Flink->Blink = curr->ResultAddressEntry.Blink;
+            ExFreePool(curr);
+            curr = NULL;
         }
         else
         {
-            PRSL temp = newRSLhead;
-            while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-            {
-                temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-            }
-            PRSL newNode = createSavedResultNode(2, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newNode)
-            {
-                temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-            }
+            //如果不断链才会移动temp循环变量。
+            temp = temp->Flink;
         }
     }
-    memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-    //链表最后一个节点也处理完毕，接下来解除挂靠：
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-    //释放老链表：
-    ExFreeResultSavedLink(&g_headRSL);
-    //把新链表头赋值给g_headRSL：
-    g_headRSL = newRSLhead;
-    //如果继续搜索搜到了，那么打印链表
-    if (g_headRSL)
+    //如果虚拟头的Flink不指向自己，那么证明存在有效的RSL节点：
+    if (virtualListHead.Flink != &virtualListHead)
     {
-        //注意此时g_mostRecentPatternLen非0！
+        //根据虚拟头找到真正的链表头尾：
+        PRSL newHead = CONTAINING_RECORD(virtualListHead.Flink, RSL, ResultAddressEntry);
+        PRSL newTail = CONTAINING_RECORD(virtualListHead.Blink, RSL, ResultAddressEntry);
+        //排除掉虚拟链表头：
+        newHead->ResultAddressEntry.Blink = &newTail->ResultAddressEntry;
+        newTail->ResultAddressEntry.Flink = &newHead->ResultAddressEntry;
+        g_headRSL = newHead;
+        //拨除废弃的链表链接：
+        virtualListHead.Flink = NULL;
+        virtualListHead.Blink = NULL;
+        //打印有效双链表：
         printListRSL(g_headRSL);
         return STATUS_SUCCESS;
     }
+    //如果虚拟头的Flink指向自己，那么证明不存在有效的RSL节点：
     else
     {
-        //如果继续搜索没找到，那么报空：
+        //直接置空：
+        g_headRSL = NULL;
+        //报告日志：
         DbgPrint("精确搜索结果：空链表！");
         //并把g_mostRecentPatternLen置零。
         g_mostRecentPatternLen = 0x0;
@@ -162,90 +131,50 @@ NTSTATUS continueSearchMode_Larger(
 )
 {
     //不用验证g_headRSL有效性，走到这个逻辑之前已经验过了：
+    LIST_ENTRY virtualListHead = { 0 };
+    virtualListHead.Flink = &g_headRSL->ResultAddressEntry;
+    CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry.Flink = &virtualListHead;
+    virtualListHead.Blink = &CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry;
+    g_headRSL->ResultAddressEntry.Blink = &virtualListHead;
     PEPROCESS pe = NULL;
     KAPC_STATE apc = { 0 };
-    PRSL tempRSL = g_headRSL;
-    PRSL newRSLhead = NULL;
-    PsLookupProcessByProcessId(g_cid.UniqueProcess, &pe);
+    PLIST_ENTRY temp = &virtualListHead;
+    PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
     KeStackAttachProcess(pe, &apc);
-    while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+    while (temp->Flink != &virtualListHead)
     {
-        if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 2)
+        PRSL curr = CONTAINING_RECORD(temp->Flink, RSL, ResultAddressEntry);
+        if (farBytesDiffer(curr->buffer, (PUCHAR)curr->address, g_mostRecentPatternLen) != 2)
         {
-            if (newRSLhead == NULL)
-            {
-                newRSLhead = createSavedResultNode(3, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newRSLhead)
-                {
-                    (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-                }
-            }
-            else
-            {
-                PRSL temp = newRSLhead;
-                while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-                {
-                    temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                }
-                PRSL newNode = createSavedResultNode(3, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newNode)
-                {
-                    temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                    newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                    (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-                }
-            }
-        }
-        memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-        tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-    }
-    if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 2)
-    {
-        if (newRSLhead == NULL)
-        {
-            newRSLhead = createSavedResultNode(3, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newRSLhead)
-            {
-                (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-            }
+            curr->ResultAddressEntry.Blink->Flink = curr->ResultAddressEntry.Flink;
+            curr->ResultAddressEntry.Flink->Blink = curr->ResultAddressEntry.Blink;
+            ExFreePool(curr);
+            curr = NULL;
         }
         else
         {
-            PRSL temp = newRSLhead;
-            while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-            {
-                temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-            }
-            PRSL newNode = createSavedResultNode(3, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newNode)
-            {
-                temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-            }
+            temp = temp->Flink;
         }
     }
-    memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-    ExFreeResultSavedLink(&g_headRSL);
-    //把新链表头赋值给g_headRSL：
-    g_headRSL = newRSLhead;
-    //如果继续搜索搜到了，那么打印链表
-    if (g_headRSL)
+    if (virtualListHead.Flink != &virtualListHead)
     {
-        //注意此时g_mostRecentPatternLen非0！
+        PRSL newHead = CONTAINING_RECORD(virtualListHead.Flink, RSL, ResultAddressEntry);
+        PRSL newTail = CONTAINING_RECORD(virtualListHead.Blink, RSL, ResultAddressEntry);
+        newHead->ResultAddressEntry.Blink = &newTail->ResultAddressEntry;
+        newTail->ResultAddressEntry.Flink = &newHead->ResultAddressEntry;
+        g_headRSL = newHead;
+        virtualListHead.Flink = NULL;
+        virtualListHead.Blink = NULL;
         printListRSL(g_headRSL);
         return STATUS_SUCCESS;
     }
     else
     {
-        //如果继续搜索没找到，那么报空：
-        DbgPrint("变大数值搜索：空链表！");
+        //如果继续搜索没找到，那么置NULL报空：
+        g_headRSL = NULL;
+        DbgPrint("变大搜索结果：空链表！");
         //并把g_mostRecentPatternLen置零。
         g_mostRecentPatternLen = 0x0;
         return STATUS_UNSUCCESSFUL;
@@ -258,90 +187,50 @@ NTSTATUS continueSearchMode_Lower(
 )
 {
     //不用验证g_headRSL有效性，走到这个逻辑之前已经验过了：
+    LIST_ENTRY virtualListHead = { 0 };
+    virtualListHead.Flink = &g_headRSL->ResultAddressEntry;
+    CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry.Flink = &virtualListHead;
+    virtualListHead.Blink = &CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry;
+    g_headRSL->ResultAddressEntry.Blink = &virtualListHead;
     PEPROCESS pe = NULL;
     KAPC_STATE apc = { 0 };
-    PRSL tempRSL = g_headRSL;
-    PRSL newRSLhead = NULL;
-    PsLookupProcessByProcessId(g_cid.UniqueProcess, &pe);
+    PLIST_ENTRY temp = &virtualListHead;
+    PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
     KeStackAttachProcess(pe, &apc);
-    while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+    while (temp->Flink != &virtualListHead)
     {
-        if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 1)
+        PRSL curr = CONTAINING_RECORD(temp->Flink, RSL, ResultAddressEntry);
+        if (farBytesDiffer(curr->buffer, (PUCHAR)curr->address, g_mostRecentPatternLen) != 1)
         {
-            if (newRSLhead == NULL)
-            {
-                newRSLhead = createSavedResultNode(4, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newRSLhead)
-                {
-                    (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-                }
-            }
-            else
-            {
-                PRSL temp = newRSLhead;
-                while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-                {
-                    temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                }
-                PRSL newNode = createSavedResultNode(4, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newNode)
-                {
-                    temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                    newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                    (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-                }
-            }
-        }
-        memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-        tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-    }
-    if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 1)
-    {
-        if (newRSLhead == NULL)
-        {
-            newRSLhead = createSavedResultNode(4, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newRSLhead)
-            {
-                (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-            }
+            curr->ResultAddressEntry.Blink->Flink = curr->ResultAddressEntry.Flink;
+            curr->ResultAddressEntry.Flink->Blink = curr->ResultAddressEntry.Blink;
+            ExFreePool(curr);
+            curr = NULL;
         }
         else
         {
-            PRSL temp = newRSLhead;
-            while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-            {
-                temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-            }
-            PRSL newNode = createSavedResultNode(4, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newNode)
-            {
-                temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-            }
+            temp = temp->Flink;
         }
     }
-    memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-    ExFreeResultSavedLink(&g_headRSL);
-    //把新链表头赋值给g_headRSL：
-    g_headRSL = newRSLhead;
-    //如果继续搜索搜到了，那么打印链表
-    if (g_headRSL)
+    if (virtualListHead.Flink != &virtualListHead)
     {
-        //注意此时g_mostRecentPatternLen非0！
+        PRSL newHead = CONTAINING_RECORD(virtualListHead.Flink, RSL, ResultAddressEntry);
+        PRSL newTail = CONTAINING_RECORD(virtualListHead.Blink, RSL, ResultAddressEntry);
+        newHead->ResultAddressEntry.Blink = &newTail->ResultAddressEntry;
+        newTail->ResultAddressEntry.Flink = &newHead->ResultAddressEntry;
+        g_headRSL = newHead;
+        virtualListHead.Flink = NULL;
+        virtualListHead.Blink = NULL;
         printListRSL(g_headRSL);
         return STATUS_SUCCESS;
     }
     else
     {
-        //如果继续搜索没找到，那么报空：
-        DbgPrint("变小数值搜索：空链表！");
+        //如果继续搜索没找到，那么置NULL报空：
+        g_headRSL = NULL;
+        DbgPrint("变小搜索结果：空链表！");
         //并把g_mostRecentPatternLen置零。
         g_mostRecentPatternLen = 0x0;
         return STATUS_UNSUCCESSFUL;
@@ -354,91 +243,50 @@ NTSTATUS continueSearchMode_Unchanged(
 )
 {
     //不用验证g_headRSL有效性，走到这个逻辑之前已经验过了：
+    LIST_ENTRY virtualListHead = { 0 };
+    virtualListHead.Flink = &g_headRSL->ResultAddressEntry;
+    CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry.Flink = &virtualListHead;
+    virtualListHead.Blink = &CONTAINING_RECORD(g_headRSL->ResultAddressEntry.Blink, RSL, ResultAddressEntry)->ResultAddressEntry;
+    g_headRSL->ResultAddressEntry.Blink = &virtualListHead;
     PEPROCESS pe = NULL;
     KAPC_STATE apc = { 0 };
-    PRSL tempRSL = g_headRSL;
-    PRSL newRSLhead = NULL;
-    PsLookupProcessByProcessId(g_cid.UniqueProcess, &pe);
+    PLIST_ENTRY temp = &virtualListHead;
+    PsLookupProcessByProcessId((HANDLE)g_cid.UniqueProcess, &pe);
     KeStackAttachProcess(pe, &apc);
-    while (tempRSL->ResultAddressEntry.Flink != &g_headRSL->ResultAddressEntry)
+    while (temp->Flink != &virtualListHead)
     {
-        if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 0)
+        PRSL curr = CONTAINING_RECORD(temp->Flink, RSL, ResultAddressEntry);
+        if (farBytesDiffer(curr->buffer, (PUCHAR)curr->address, g_mostRecentPatternLen) != 0)
         {
-            if (newRSLhead == NULL)
-            {
-                newRSLhead = createSavedResultNode(5, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newRSLhead)
-                {
-                    (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-                }
-            }
-            else
-            {
-                PRSL temp = newRSLhead;
-                while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-                {
-                    temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-                }
-                PRSL newNode = createSavedResultNode(5, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-                if (newNode)
-                {
-                    temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                    newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                    newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                    (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-                }
-            }
-        }
-        memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-        tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-    }
-    if (farBytesDiffer(tempRSL->buffer, (PUCHAR)tempRSL->address, g_mostRecentPatternLen) == 0)
-    {
-        if (newRSLhead == NULL)
-        {
-            newRSLhead = createSavedResultNode(5, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newRSLhead)
-            {
-                (newRSLhead)->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                (newRSLhead)->ResultAddressEntry.Blink = (newRSLhead)->ResultAddressEntry.Flink;
-            }
+            curr->ResultAddressEntry.Blink->Flink = curr->ResultAddressEntry.Flink;
+            curr->ResultAddressEntry.Flink->Blink = curr->ResultAddressEntry.Blink;
+            ExFreePool(curr);
+            curr = NULL;
         }
         else
         {
-            PRSL temp = newRSLhead;
-            while (temp->ResultAddressEntry.Flink != &((newRSLhead)->ResultAddressEntry))
-            {
-                temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-            }
-            PRSL newNode = createSavedResultNode(5, tempRSL->address, g_mostRecentPatternLen, g_headVAL);
-            if (newNode)
-            {
-                temp->ResultAddressEntry.Flink = &newNode->ResultAddressEntry;
-                newNode->ResultAddressEntry.Flink = &((newRSLhead)->ResultAddressEntry);
-                newNode->ResultAddressEntry.Blink = &temp->ResultAddressEntry;
-                (newRSLhead)->ResultAddressEntry.Blink = &newNode->ResultAddressEntry;
-            }
+            temp = temp->Flink;
         }
     }
-    memcpy((PVOID)tempRSL->buffer, (PVOID)tempRSL->address, g_mostRecentPatternLen);
-    tempRSL = CONTAINING_RECORD(tempRSL->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-    ExFreeResultSavedLink(&g_headRSL);
-    //把新链表头赋值给g_headRSL：
-    g_headRSL = newRSLhead;
-    //如果继续搜索搜到了，那么打印链表
-    if (g_headRSL)
+    if (virtualListHead.Flink != &virtualListHead)
     {
-        //注意此时g_mostRecentPatternLen非0！
+        PRSL newHead = CONTAINING_RECORD(virtualListHead.Flink, RSL, ResultAddressEntry);
+        PRSL newTail = CONTAINING_RECORD(virtualListHead.Blink, RSL, ResultAddressEntry);
+        newHead->ResultAddressEntry.Blink = &newTail->ResultAddressEntry;
+        newTail->ResultAddressEntry.Flink = &newHead->ResultAddressEntry;
+        g_headRSL = newHead;
+        virtualListHead.Flink = NULL;
+        virtualListHead.Blink = NULL;
         printListRSL(g_headRSL);
         return STATUS_SUCCESS;
     }
     else
     {
-        //如果继续搜索没找到，那么报空：
-        DbgPrint("未变动数值搜索：空链表！");
+        //如果继续搜索没找到，那么置NULL报空：
+        g_headRSL = NULL;
+        DbgPrint("未变动搜索结果：空链表！");
         //并把g_mostRecentPatternLen置零。
         g_mostRecentPatternLen = 0x0;
         return STATUS_UNSUCCESSFUL;
