@@ -20,6 +20,14 @@ static PRSL g_headRSL = NULL;
 static SIZE_T g_mostRecentPatternLen = 0x0;
 __SEARCH_OUTCOME_DEFINES__;
 
+__PROCESS_HIDEN_DEFINES__;
+static PHPL g_headHPL = NULL;
+__PROCESS_HIDEN_DEFINES__;
+
+__PROCESS_PRETENT_DEFINES__;
+static PPPL g_headPPL = NULL;
+__PROCESS_PRETENT_DEFINES__;
+
 ______BASIC_MAJOR_FUNCTION______;
 NTSTATUS myCreate(
     IN PDEVICE_OBJECT pDeviceObject,
@@ -99,7 +107,7 @@ NTSTATUS continueSearchMode_Precise(
             {
                 ExFreePool(curr->buffer);
                 curr->rslAddressBufferLen = newReceivedPatternLen;
-                curr->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newReceivedPatternLen, 'BBBB');
+                curr->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newReceivedPatternLen, 'zzzz');
                 for (size_t j = 0; j < newReceivedPatternLen; j++)
                 {
                     curr->buffer[j] = newReceivedPattern[j];
@@ -349,13 +357,13 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         getRegionGapAndPages(g_headVAL);
         if(g_headVAL != NULL)
         {
-            DbgPrint("Process Memoty Loading Successfully");
+            DbgPrint("Process Memory Loading Successfully");
             IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
             return STATUS_SUCCESS;
         }
         else
         {
-            DbgPrint("Process Memoty Loading Failed! Please Stop and Unloading Driver");
+            DbgPrint("Process Memory Loading Failed! Please Stop and Unloading Driver");
             IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
             return STATUS_UNSUCCESSFUL;
         }
@@ -365,7 +373,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         PPSI receiveStructPointer = (PPSI)pIrp->AssociatedIrp.SystemBuffer;
         if (receiveStructPointer->isFirstScan)
         {
-            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'PPPP');
+            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'yyyy');
             SIZE_T tempBufferLen = receiveStructPointer->patternLen;
             for (size_t j = 0; j < receiveStructPointer->patternLen; j++)
             {
@@ -412,7 +420,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             if (receiveStructPointer->scanMode == 0)
             {
                 // isFirstScan:0 // pattern: valid address // patternLen: valid number // scanMode: 0 //
-                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'LLLL');
+                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'xxxx');
                 SIZE_T tempBufferLen = receiveStructPointer->patternLen;
                 for (size_t j = 0; j < receiveStructPointer->patternLen && tempBuffer; j++)
                 {
@@ -481,7 +489,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         PWPMI inputBuffer = (PWPMI)pIrp->AssociatedIrp.SystemBuffer;
         if (inputBuffer)
         {
-            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'ZZZZ');
+            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'wwww');
             for (SIZE_T j = 0; j < inputBuffer->writeMemoryLength && tempBuffer; j++)
             {
                 tempBuffer[j] = *(UCHAR*)((ULONG64)(inputBuffer->writeBuffer) + j);
@@ -498,10 +506,34 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             return STATUS_INVALID_ADDRESS;
         }
     }
+    else if (controlCode == ____$_PROCESS_HIDEN_PROCEDURE_$____)
+    {
+        ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer;
+        processHiddenProcedure(pid, &g_headHPL);
+        printListHPL(g_headHPL);
+        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
+        return STATUS_SUCCESS;
+    }
+    else if (controlCode == ____$_PROCESS_PRETENT_PROCEDURE_$____)
+    {
+        PPPI inputBuffer = (PPPI)pIrp->AssociatedIrp.SystemBuffer;
+        processPretentProcedure(inputBuffer->ditryPID, inputBuffer->parasitePID, &g_headPPL);
+        printListPPL(g_headPPL);
+        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
+        return STATUS_SUCCESS;
+    }
     else if (controlCode == ____$_UNLOAD_DRIVER_PREPARE_$____)
     {
         //KeBugCheckEx(0X9ABCDEF0, 0, 0, 0, 0);
         DbgPrint("here!");
+        if (g_headHPL != NULL)
+        {
+            restoreHiddenProcess(g_headHPL);
+        }
+        if (g_headPPL != NULL)
+        {
+            restorePretentProcess(g_headPPL);
+        }
         if (g_headVAL)
         {
             ExFreeValidAddressLink(&g_headVAL);
@@ -512,9 +544,20 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             ExFreeResultSavedLink(&g_headRSL);
             g_headRSL = NULL;
         }
+        if (g_headHPL)
+        {
+            ExFreeHiddenProcessLink(&g_headHPL);
+            g_headHPL = NULL;
+        }
+        if (g_headPPL)
+        {
+            ExFreePretentProcessLink(&g_headPPL);
+            g_headPPL = NULL;
+        }
         if (g_kernelProcess)
         {
             ZwClose(g_kernelProcess);
+            g_kernelProcess = NULL;
         }
         g_mostRecentPatternLen = 0x0;
         IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
