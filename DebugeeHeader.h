@@ -56,6 +56,22 @@ typedef struct _ResultSavedList
     LIST_ENTRY ResultAddressEntry;
 }RSL, * PRSL, ** PPRSL;
 
+typedef struct _AlreadyHiddenProcessList
+{
+    ULONG64 pidAlreadyHidden;
+    PEPROCESS eprocessHeaderAddressOfHiddenProcess;
+    PLIST_ENTRY prevProcessEntry;
+    PLIST_ENTRY nextProcessEntry;
+    LIST_ENTRY HiddenProcessEntry;
+}HPL, *PHPL;
+
+typedef struct _AlreadyPretentProcessList
+{
+    ULONG64 dirtyPID;
+    ULONG64 parasitePID;
+    LIST_ENTRY PretentProcessEntry;
+}PPL, *PPPL;
+
 VOID KernelDriverThreadSleep(
     IN LONG msec
 );
@@ -66,19 +82,26 @@ PVAL createValidAddressNode(
     IN ULONG memProtectAttributes,
     IN BOOLEAN executeFlag
 );
+VOID getRegionGapAndPages(
+    //此函数补全VAL结构的regionGap和pageNums成员
+    IN_OUT PVAL headVAL
+);
 PRSL createSavedResultNode(
     IN ULONG times,
     IN ULONG64 address,
     IN ULONG64 addressBufferLen,
     IN PVAL headVAL
 );
-VOID getRegionGapAndPages(
-    //此函数补全VAL结构的regionGap和pageNums成员
-    IN_OUT PVAL headVAL
+PHPL createHiddenProcessNode(
+    IN ULONG64 pidOfHiddenProcess,
+    IN PEPROCESS eprocessHeaderOfHiddenProcess,
+    IN PLIST_ENTRY prevEntryAddress,
+    IN PLIST_ENTRY nextEntryAddress
 );
-ULONG64 getMaxRegionPages(
-    IN PVAL head
-); 
+PPPL createPretentProcessNode(
+    IN ULONG64 dirtyPID,
+    IN ULONG64 parasitePID
+);
 //KMP Algorithm
 VOID computeLPSArray(
     IN CONST UCHAR* pattern,
@@ -102,7 +125,7 @@ BOOLEAN isSame(
     IN SIZE_T size
 );
 BOOLEAN checkAllRSLAddressLenValid(
-    PRSL headRSL
+    IN PRSL headRSL
 );
 VOID printListVAL(
     IN PVAL headVAL
@@ -110,14 +133,22 @@ VOID printListVAL(
 VOID printListRSL(
     IN PRSL headRSL
 );
-VOID ReadBuffer(
-    IN PVOID bufferHead,
-    IN SIZE_T size
+VOID printListHPL(
+    IN PHPL headHPL
+);
+VOID printListPPL(
+    IN PPPL headPPL
+);
+ULONG64 getMaxRegionPages(
+    IN PVAL head
+);
+SIZE_T getNodeNumsForDoubleLinkedList(
+    IN PRSL headRSL
 );
 UCHAR farBytesDiffer(
-    PUCHAR oldPattern,
-    PUCHAR newPattern,
-    SIZE_T minSize
+    IN PUCHAR oldPattern,
+    IN PUCHAR newPattern,
+    IN SIZE_T minSize
 );
 //Single&Double linked list built
 VOID buildValidAddressSingleList(
@@ -135,12 +166,6 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     IN SIZE_T patternLen,
     OUT PRSL* headRSL
 );
-SIZE_T getNodeNumsForDoubleLinkedList(
-    IN PRSL headRSL
-);
-VOID processHiddenProcedure(
-    IN ULONG64 pid
-);
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
 );
@@ -153,17 +178,23 @@ VOID writeProcessMemory(
     IN PVOID content,
     IN SIZE_T size
 );
-VOID processPretent(
-    IN HANDLE pid_dirty,
-    IN HANDLE pid_clean,
-    OUT PEPROCESS* dirtyPEmark
+VOID processHiddenProcedure(
+    IN ULONG64 pid,
+    IN PHPL* headHPL
 );
-VOID processPretentRestore(
-    IN PEPROCESS dirtyPE,
-    IN HANDLE pid_dirty
+VOID restoreHiddenProcess(
+    IN PHPL headHPL
+);
+VOID processPretentProcedure(
+    IN HANDLE dirtyPID,
+    IN HANDLE parasitePID,
+    OUT PPPL* headPPL
+);
+VOID restorePretentProcess(
+    IN PPPL headPPL
 );
 VOID readImagePathNameAndCommandLine(
-    HANDLE pid
+    IN HANDLE pid
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
@@ -171,5 +202,11 @@ VOID ExFreeResultSavedLink(
 );
 VOID ExFreeValidAddressLink(
     OUT PVAL* headVAL
+);
+VOID ExFreeHiddenProcessLink(
+    OUT PHPL* headHPL
+);
+VOID ExFreePretentProcessLink(
+    OUT PPPL* headPPL
 );
 #endif
