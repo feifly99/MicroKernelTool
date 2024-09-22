@@ -18,6 +18,9 @@ extern ULONG64 __asm__PDTchange(IN ULONG64 otherProcessCR3Value, OUT ULONG64* ol
 extern ULONG64 __asm__PDTrestore(IN ULONG64 oldCR3Value);
 extern ULONG64 __asm__getImagePathNameAddress(IN ULONG64 pe);
 extern ULONG64 __asm__getNextDriverNameAddress(IN ULONG64 pDriverObject);
+extern ULONG64 __asm__getExportFuncsNameByTargetIndex(ULONG64 dllBase, ULONG64 index);
+extern ULONG64 __asm__getExportFuncsAddressByTargetIndex(ULONG64 dllBase, ULONG64 index);
+extern SIZE_T  __asm__getNumberOfFunctionsExportedByName(ULONG64 dllBase);
 
 #define CR0breakOperation(sentence) \
 do\
