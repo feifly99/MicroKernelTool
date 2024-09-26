@@ -23,7 +23,7 @@ Overall：
            //实际应用目前只能在我的电脑上，别的机器用100%会蓝屏！！但暂时先不改了！
            思路：刚开始在想用我自己定义的hook函数减去SSDT表头，用差值去替换偏移；
            但是上面得出差值是0x42849650，由于64位系统对NT函数寻址进行了一个小加密，需要把偏移二进制右移动4位；
-           即：SSDT_BASE[index] + SSDT_BASE = funcAddressOf[index]
+           即：SSDT_BASE[index] >> 4 + SSDT_BASE = funcAddressOf[index]
            导致了我的差值不能直接写在偏移地址里面，差了“半个”字节，无法解决此问题！
            然后我又发现NtOpenProcess函数上方有13个字节是0xCC，而我一计算：
            mov rax, 0FFFFF8056B0C7BA0h -> 48 b8 60 12 32 86 06 f8 ff ff 
