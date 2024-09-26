@@ -34,10 +34,10 @@ Overall：
            //在修改之前需要先变更CR0寄存器的第16位二进制位来破除写保护！
            然后再把*(ULONG*)(SSDT_BASE[index])篡改成我的shellcode的起始地址偏移；
            即：*(ULONG*)(SSDT_BASE[index]) = MyNtOpenProcess - SSDT_BASE;
-           再把这个值shl 4，多出来的半个字节换成什么都可以！
+           再把这个值shl 4(右移的逆操作)，多出来的半个字节换成什么都可以！
            就实现了基于SSDT的inline hook！
            测试表明，驱动程序运行时，使用CE打开进程会提示无法打开！
-           表明CPU确实执行到了我自己定义的ntopenprocess了！
+           表明CPU确实执行到了我自己定义的NtOpenProcess了！
 2024/9/24：
 
            驱动先更新到这儿！还有用户层接口，还要忙开题，暂时挂起此项目；
