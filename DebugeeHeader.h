@@ -200,6 +200,12 @@ VOID restorePretentProcess(
 VOID readImagePathNameAndCommandLine(
     IN HANDLE pid
 );
+NTSTATUS MyNtOpenProcess(
+    PHANDLE            ProcessHandle,
+    ACCESS_MASK        DesiredAccess,
+    POBJECT_ATTRIBUTES ObjectAttributes,
+    PCLIENT_ID         ClientId
+);
 VOID protectProcessProcedure(
 );
 VOID protectProcessRestore(
