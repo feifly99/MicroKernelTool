@@ -10,12 +10,22 @@ Overall：
            进程傀儡；
            SSDT inline hook；
            进程保护（基于SSDT hook）
-           获取DLL导出函数的相关信息：
-           （以名字）导出的函数个数；
+           获取DLL以名字导出函数的相关信息：
+           导出的函数个数；
            导出函数名字；
            导出函数地址.
 
            经测试，所有功能调用都没有内存泄露出现
+2024/9/27：
+
+           将SSDT Hook NtOpenProcess的功能整合在了函数中；
+           但是还没有对进程保护功能加入到用户联立中。
+           新蓝屏代码：CRITICAL_STRUCTURE_CORRUPTION
+           原因在于在driverUnload函数中没有写入protectProcessRestore()过程；
+           疑问：蓝屏的时候我并没有主动调用停止和卸载驱动，仅仅只是启动了驱动；
+           理论上来说，不主动调用driverUnload就不会蓝屏，但是它确实蓝屏了；
+           在我把protectProcessRestore()加上之后就可以正常运行了，怎么运行都不会蓝屏。
+           难道说OS会探测性地背后隐藏读取或者执行driverUnload来提前验证内核结构吗？
 2024/9/26：
 
            使用了SSDT Hook来实现进程保护，但是目前没有整理成函数；
