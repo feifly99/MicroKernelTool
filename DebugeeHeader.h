@@ -21,6 +21,7 @@ extern ULONG64 __asm__getNextDriverNameAddress(IN ULONG64 pDriverObject);
 extern ULONG64 __asm__getExportFuncsNameByTargetIndex(ULONG64 dllBase, ULONG64 index);
 extern ULONG64 __asm__getExportFuncsAddressByTargetIndex(ULONG64 dllBase, ULONG64 index);
 extern SIZE_T  __asm__getNumberOfFunctionsExportedByName(ULONG64 dllBase);
+extern ULONG64 __asm__readMSR(ULONG64 msrAddress);
 
 #define CR0breakOperation(sentence) \
 do\
@@ -198,6 +199,10 @@ VOID restorePretentProcess(
 );
 VOID readImagePathNameAndCommandLine(
     IN HANDLE pid
+);
+VOID protectProcessProcedure(
+);
+VOID protectProcessRestore(
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
