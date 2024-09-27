@@ -1,52 +1,13 @@
 #include "DebugeeHeader.h"
 #include "DriverUserInteraction.h"
 
-#define processIDWantToProtect 13152
-
-NTSTATUS MyNtOpenProcess(
-    PHANDLE            ProcessHandle,
-    ACCESS_MASK        DesiredAccess,
-    POBJECT_ATTRIBUTES ObjectAttributes,
-    PCLIENT_ID         ClientId
-)
-{
-    if (ClientId->UniqueProcess == (HANDLE)processIDWantToProtect)
-    {
-        *ProcessHandle = NULL;
-        return STATUS_UNSUCCESSFUL;
-    }
-    else
-    {
-        return NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
-    }
-}
-
-typedef struct _InputArgs
-{
-    PVOID newAddressToExecute;
-    PVOID newAddressSavedDLLFullPath;
-}IA, *PIA;
-
-NTSTATUS testRoutine(PVOID inputArgs) //R3 memory avaliable
-{
-    UNREFERENCED_PARAMETER(inputArgs);
-    return STATUS_SUCCESS;
-}
-
 VOID driverUnload(PDRIVER_OBJECT DriverObject)
 {
     DbgPrint("Unloading Driver...\n");
     /*UNICODE_STRING sybName = RTL_CONSTANT_STRING(L"\\??\\ANYIFEI_SYMBOLICLINK_NAME");
     IoDeleteDevice(DriverObject->DeviceObject);
     IoDeleteSymbolicLink(&sybName);*/
-    UCHAR newFucker[4] =
-    {
-        0x00, 0x8c, 0xb4, 0x05
-    };
-    ULONG64 oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)0xfffff806160c7c38, newFucker, 4);
-    __asm__WRrestore(oldCR0);
+    protectProcessRestore();
     UNREFERENCED_PARAMETER(DriverObject);
 }
 
@@ -65,55 +26,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING RegistryPath)
     driverObject->DriverUnload = driverUnload;
     //displayAllModuleInfomationByProcessId(0x228);
     //displayAllThreadInfomationByProcessId(0x228);
-    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
-    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370;
-    DbgPrint("KiSystemServiceStart: %llx", KiSystemServiceStart);
-    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
-    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14;
-    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 0xA);
-    ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
-    DbgPrint("%llx", SSDT_Address);
-    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
-    ULONG64 SSDT_NumberOfServices = *(ULONG64*)(SSDT_Address + 0x10);
-    DbgPrint("SSDT_ServiceTableBase: %llx", SSDT_ServiceTableBase);
-    DbgPrint("SSDT_NumberOfServices: %llx", SSDT_NumberOfServices);
-    /*for (SIZE_T j = 0; j < SSDT_NumberOfServices - 1; j++)
-    {
-        DbgPrint("index: %llx, funcAddress: 0x%p", j, (PVOID)(((*(ULONG*)(SSDT_ServiceTableBase + j * 4)) >> 4) + SSDT_ServiceTableBase));
-    }*/
-    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + 38 * 4)) >> 4) + SSDT_ServiceTableBase);
-    DbgPrint("NtOpenProcessAddress: 0x%p", (PVOID)NtOpenProcessAddress);
-    ULONG64 MyNtOpenProcessAddress = (ULONG64)MyNtOpenProcess;
-    DbgPrint("MyNtOpenProcessAddress: 0x%p", (PVOID)MyNtOpenProcessAddress);
-    ULONG64 diff = MyNtOpenProcessAddress - SSDT_ServiceTableBase;
-    DbgPrint("%llx", diff);
-    UCHAR* pointer = (UCHAR*) & MyNtOpenProcessAddress;
-    /*for (size_t j = 0; j < 8; j++)
-    {
-        DbgPrint("%hhx", *(pointer + j));
-    }*/
-    UCHAR shellCode[12] =
-    {
-        0x48, 0xB8, pointer[0], pointer[1], pointer[2], pointer[3], pointer[4], pointer[5], pointer[6], pointer[7],
-        //mov rax, qword ptr [(_longlong64)pointer_(MyNtOpenProcessAddress)]
-        0xFF, 0xE0
-        //jmp rax
-    };
-    ULONG64 oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(NtOpenProcessAddress - 13), shellCode, 12);
-    __asm__WRrestore(oldCR0);
-    ULONG64 newDiffer = NtOpenProcessAddress - 13 - SSDT_ServiceTableBase;
-    DbgPrint("%llx", newDiffer);
-    //SSDT_BASE[index] >> 4 + SSDT_BASE = (_longlong)funcBase[index];
-    UCHAR fucker[4] =
-    {
-        0x30, 0x8B, 0xB4, 0x05 //0x05B48B3X >> 4 = 0x005B48B3, 加上SSDT偏移直接定位到上面的shellCode.
-    };
-    oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(SSDT_ServiceTableBase + 0x90 + 0x8), fucker, 4);
-    __asm__WRrestore(oldCR0);
+    protectProcessProcedure();
+    
     return STATUS_SUCCESS;
 }
 
