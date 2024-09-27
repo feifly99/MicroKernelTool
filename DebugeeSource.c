@@ -788,7 +788,7 @@ VOID protectProcessRestore(
     SIZE_T shellCodeSize = 12;
     ULONG64 oldCR0 = 0x0;
     __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(NtOpenProcessAddress - shellCodeSize - 1), restoreINT3Code, shellCodeSize); 
+    memcpy((PVOID)(NtOpenProcessAddress), restoreINT3Code, shellCodeSize); 
     __asm__WRrestore(oldCR0);
     UCHAR restoreNtOpenProcessOffset[4] =
     {
