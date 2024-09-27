@@ -74,7 +74,7 @@ PRSL createSavedResultNode(
         }
         if (newNode->rslAddressBufferLen)
         {
-            if(newNode->address + newNode->rslAddressBufferLen <= newNode->thisNodeAddressPageMaxValidAddress)
+            if (newNode->address + newNode->rslAddressBufferLen <= newNode->thisNodeAddressPageMaxValidAddress)
             {
                 newNode->buffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, newNode->rslAddressBufferLen, 'tttt');
                 for (size_t j = 0; j < newNode->rslAddressBufferLen && newNode->buffer; j++)
@@ -489,7 +489,7 @@ VOID displayAllModuleInfomationByProcessId(
     ULONG64 InLoadOrderModuleListAddress = (ULONG64)pld + 0x10;
     PLIST_ENTRY initialEntryAddress = (PLIST_ENTRY)InLoadOrderModuleListAddress;
     PLIST_ENTRY temp = initialEntryAddress;
-    while((UL64)temp != (ULONG64)initialEntryAddress->Blink)
+    while ((UL64)temp != (ULONG64)initialEntryAddress->Blink)
     {
         DbgPrint("DllBase: %p \t DllName: %wZ", *(HANDLE*)((ULONG64)temp->Flink + 0x30), (PUNICODE_STRING)((ULONG64)temp->Flink + 0x58));
         temp = temp->Flink;
@@ -512,7 +512,7 @@ VOID displayAllThreadInfomationByProcessId(
     while ((UL64)firstThreadListEntryAddress != (UL64)(((PLIST_ENTRY)initialEntryAddress)))
     {
         cidAddress = (UL64)firstThreadListEntryAddress - 0x4E8 + 0x478;
-        DbgPrint("%p", ((PCLIENT_ID)cidAddress)->UniqueThread);
+        DbgPrint("threadID: %p, threadStartAddress: 0x%p", ((PCLIENT_ID)cidAddress)->UniqueThread, *(PVOID*)((UL64)firstThreadListEntryAddress - 0x4E8 + 0x450));
         firstThreadListEntryAddress = firstThreadListEntryAddress->Flink;
     }
     KeUnstackDetachProcess(&apc);
@@ -617,14 +617,14 @@ VOID processPretentProcedure(
     PsLookupProcessByProcessId((HANDLE)dirtyPID, &dirtyPE);
     ULONG64 dirtyPIDAddress = (ULONG64)dirtyPE + uniqueProcessIDOffset;
     ULONG64 tempParasitePid = (ULONG64)parasitePID;
-    ULONG64 oldCR0 = 0x0; 
-    __asm__WRbreak(&oldCR0); 
+    ULONG64 oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
     memcpy((PVOID)dirtyPIDAddress, (PVOID)&tempParasitePid, sizeof(HANDLE));
     __asm__WRrestore(oldCR0);
     if (*headPPL == NULL)
     {
         *headPPL = createPretentProcessNode(
-            (ULONG64)dirtyPID, 
+            (ULONG64)dirtyPID,
             (ULONG64)parasitePID
         );
         (*headPPL)->PretentProcessEntry.Flink = &((*headPPL)->PretentProcessEntry);
@@ -656,7 +656,7 @@ VOID restorePretentProcess(
 )
 {
     PPPL temp = headPPL;
-    while(temp->PretentProcessEntry.Flink != &headPPL->PretentProcessEntry)
+    while (temp->PretentProcessEntry.Flink != &headPPL->PretentProcessEntry)
     {
         PEPROCESS dirtyPE = NULL;
         PsLookupProcessByProcessId((HANDLE)temp->dirtyPID, &dirtyPE);
@@ -698,6 +698,109 @@ VOID readImagePathNameAndCommandLine(
     ObDereferenceObject(pe);
     return;
 }
+NTSTATUS MyNtOpenProcess(
+    PHANDLE            ProcessHandle,
+    ACCESS_MASK        DesiredAccess,
+    POBJECT_ATTRIBUTES ObjectAttributes,
+    PCLIENT_ID         ClientId
+)
+{
+    if (ClientId->UniqueProcess == (HANDLE)4132)
+    {
+        *ProcessHandle = NULL;
+        return STATUS_UNSUCCESSFUL;
+    }
+    else
+    {
+        return NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+    }
+}
+VOID protectProcessProcedure(
+)
+{
+    ULONG NtOpenProcessFunctionIndex = 38; //0x26
+    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
+    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370; //Windows10 x64 22H2 Only.
+    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
+    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14; //注意是加14，因为RIP存着该指令的下一条指令所在的地址而不是此指令的地址！
+    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10); //取得0x008ea8ae这个关键偏移，此偏移加上此指令的地址就可以得到SSDT表的地址.
+    //KiSystemServiceRepeat      : 4c 8d 15 35 f7 9e 00  
+    //--->4c 8d 15 35 f7 9e 00    lea    r10,[rip+0x9ef735]        # nt!KeServiceDescriptorTable (0xfffff807512018c0)
+    //KiSystemServiceRepeat + 0x7: 4c 8d 1d ae a8 8e 00  
+    //--->4c 8d 1d ae a8 8e 00    lea    r11,[rip+0x8ea8ae]        # nt!KeServiceDescriptorTableShadow (0xfffff807510fca40)
+    ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
+    /*typedef struct _SYSTEM_SERVICE_DISCRIPTION_TABLE 
+    {
+        + 0x00 -> ServiceTableBase;
+        + 0x08 -> ServiceCounterTableBase;
+        + 0x10 -> NumberOfServices;
+        +0x18  -> ParamTableBase;
+    };*/
+    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
+    //算法：ServiceTableBase[index] >> 4 + ServiceTableBase = "第index个导出函数的首地址".
+    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * 4)) >> 4) + SSDT_ServiceTableBase);
+    ULONG64 MyNtOpenProcessAddress = (ULONG64)MyNtOpenProcess;
+    UCHAR* pointer = (UCHAR*)&MyNtOpenProcessAddress; //把地址转化成八个单独的字节，存入shellCode
+    UCHAR shellCode[12] =
+    {
+        0x48, 0xB8, pointer[0], pointer[1], pointer[2], pointer[3], pointer[4], pointer[5], pointer[6], pointer[7],
+        //mov rax, qword ptr [(_longlong64)pointer_(MyNtOpenProcessAddress)]
+        0xFF, 0xE0
+        //jmp rax
+    };
+    SIZE_T shellCodeSize = 12;
+    ULONG64 oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
+    memcpy((PVOID)(NtOpenProcessAddress - shellCodeSize - 1), shellCode, shellCodeSize); //仅在本机器上可用，本机器上确实在NTOPENPROCESS上方存在13个0xCC字节！
+    __asm__WRrestore(oldCR0);
+    ULONG64 differ = NtOpenProcessAddress - shellCodeSize - 1 - SSDT_ServiceTableBase;
+    //本机能保证differ（也就是NtOpenProcessAddress和SSDT_ServiceTableBase的差值）一定不能高于四字节能存储的最大值！
+    ULONG targetIndexOffset = (*(ULONG*)&differ) << 4; //0x05B48B30 (0x005B48B3 << 4)
+    UCHAR* pointer2targetIndexOffset = (UCHAR*) & targetIndexOffset;
+    //pointer2targetIndexOffset -> 30 8B B4 05 00 00 00 00
+    UCHAR myNtOpenProcessOffset[4] =
+    {
+        pointer2targetIndexOffset[0],
+        pointer2targetIndexOffset[1],
+        pointer2targetIndexOffset[2],
+        pointer2targetIndexOffset[3]
+    };
+    SIZE_T __Nt__Type__FunctionUniformSize = 4;
+    oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
+    memcpy((PVOID)(SSDT_ServiceTableBase + (ULONG64)(NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)), myNtOpenProcessOffset, __Nt__Type__FunctionUniformSize);
+    __asm__WRrestore(oldCR0);
+    return;
+}
+VOID protectProcessRestore(
+)
+{
+    ULONG NtOpenProcessFunctionIndex = 38; 
+    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
+    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370; 
+    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
+    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14; 
+    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10); 
+    ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
+    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
+    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * 4)) >> 4) + SSDT_ServiceTableBase);
+    UCHAR restoreINT3Code[12] = { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC };
+    SIZE_T shellCodeSize = 12;
+    ULONG64 oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
+    memcpy((PVOID)(NtOpenProcessAddress - shellCodeSize - 1), restoreINT3Code, shellCodeSize); 
+    __asm__WRrestore(oldCR0);
+    UCHAR restoreNtOpenProcessOffset[4] =
+    {
+        0x00, 0x8c, 0xb4, 0x05
+    };
+    SIZE_T __Nt__Type__FunctionUniformSize = 4;
+    oldCR0 = 0x0;
+    __asm__WRbreak(&oldCR0);
+    memcpy((PVOID)(SSDT_ServiceTableBase + (ULONG64)(NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)), restoreNtOpenProcessOffset, __Nt__Type__FunctionUniformSize);
+    __asm__WRrestore(oldCR0);
+    return;
+}
 VOID ExFreeResultSavedLink(
     OUT PRSL* headRSL
 )
@@ -714,7 +817,7 @@ VOID ExFreeResultSavedLink(
             ExFreePool(tempRSL->buffer);
             tempRSL->buffer = NULL;
         }
-        ExFreePool(tempRSL); 
+        ExFreePool(tempRSL);
         tempRSL = tempX;
     }
 }
@@ -726,7 +829,7 @@ VOID ExFreeValidAddressLink(
     while (temp->ValidAddressEntry.Next != NULL)
     {
         PVAL tempX = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
-        ExFreePool(temp); 
+        ExFreePool(temp);
         temp = tempX;
     }
     ExFreePool(temp);
