@@ -22,6 +22,7 @@ Overall：
            但是还没有对进程保护功能加入到用户联立中。
            新蓝屏代码：CRITICAL_STRUCTURE_CORRUPTION
            原因在于在driverUnload函数中没有写入protectProcessRestore()过程；
+           加上了protectProcessRestore()之后就没事了，应该是过了PatchGuard检查？
            疑问：蓝屏的时候我并没有主动调用停止和卸载驱动，仅仅只是启动了驱动；
            理论上来说，不主动调用driverUnload就不会蓝屏，但是它确实蓝屏了；
            在我把protectProcessRestore()加上之后就可以正常运行了，怎么运行都不会蓝屏。
