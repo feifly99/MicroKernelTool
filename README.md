@@ -16,6 +16,35 @@ Overall：
            导出函数地址.
 
            经测试，所有功能调用都没有内存泄露出现
+2024/9/27补档
+           
+           发现灾难级BUG，原因在于protectProcessRestore().
+           修复前：memcpy((PVOID)(NtOpenProcessAddress - shellCodeSize - 1), restoreINT3Code, shellCodeSize);
+           修复后：memcpy((PVOID)NtOpenProcessAddress, restoreINT3Code, shellCodeSize);
+           问题描述：在执行了此函数之后，驱动正常卸载没问题；
+           但是电脑（即使是在反复重启之后）自此之后开始不定时蓝屏崩溃；
+           造成了系统严重不稳定，即使只开机待机什么也不做也会概率蓝屏。
+           问题原因：在执行了进程保护之后，由于此时NtOpenProcess的偏移已经被篡改；
+           而我的复原逻辑是先把跳转指令恢复成0xCC，后修改原来的NtOpenProcess偏移；
+           但是在复原跳转指令的时候仍然采用了NtOpenProcessAddress-shellCodeSize-1这个偏移；
+           这导致复原的时候实际上写入的12个0xCC字节覆盖到了我的shellCode的起始字节的上面13个偏移处！
+           而我的shellCode的起始字节已经距离真正的NtOpenProcessAddress偏移了13个字节！
+           这造成了两个结果：
+           1.我自己的shellCode字节没有被正确地恢复为0xCC；
+           2.不仅如此，我还把我自己的shellCode字节上面的13个偏移的地方
+           （也就是真正的NtOpenProcessAddress的上面的第25(= 13 + 12)个字节开始）写成了0xCC！
+           由于NtOpenProcess函数的上面只有13个0xCC可以被使用，但我却把12个用来复原的0xCC写到了NtOpenProcess函数的上面25字节处；
+           导致了NtOpenProcess函数的上面的那个系统函数的后12个可执行字节被错误地改成了0xCC；
+           而且这12个字节重启了2到3次之后通过windbg查看仍然没变，导致了频繁蓝屏，即使待机也会突然蓝屏！
+           目前已经改正此灾难性BUG，心有余悸！
+           注1：被0xCC错误覆盖的可执行字节只有在Windows执行到此过程发生蓝屏之后才会自动修复
+           （即只有执行到NtOpenProcess上面那个函数触发蓝屏时，Windows才会自动修正那些字节）
+           注2：调试期间期间报了包括但不限于：
+           SYSTEM_SERVICE_EXCEPTION;
+           CRITICAL_STRUCTURE_CORRUPTION;
+           SYSTEM_THREAD_EXCEPTION_NOT_HANDLED;
+           CRITICAL_PROCESS_DIED
+           等大量蓝屏代码，好在现在已经修复此BUG！
 2024/9/27：
 
            将SSDT Hook NtOpenProcess的功能整合在了函数中；
