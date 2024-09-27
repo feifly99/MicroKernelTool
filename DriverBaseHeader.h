@@ -10,5 +10,6 @@
 #define IN_OUT
 #define GLOBAL
 #define LOCAL
+#define MAGIC_NUMBER_LOCAL_MACHINE
 
 #endif
