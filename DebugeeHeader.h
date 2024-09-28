@@ -17,11 +17,12 @@ extern ULONG64 __asm__restoreEFLregistor();
 extern ULONG64 __asm__PDTchange(IN ULONG64 otherProcessCR3Value, OUT ULONG64* oldCR3ValueAddress);
 extern ULONG64 __asm__PDTrestore(IN ULONG64 oldCR3Value);
 extern ULONG64 __asm__getImagePathNameAddress(IN ULONG64 pe);
+extern ULONG64 __asm__readMSR(IN ULONG64 msrAddress);
 extern ULONG64 __asm__getNextDriverNameAddress(IN ULONG64 pDriverObject);
-extern ULONG64 __asm__getExportFuncsNameByTargetIndex(ULONG64 dllBase, ULONG64 index);
-extern ULONG64 __asm__getExportFuncsAddressByTargetIndex(ULONG64 dllBase, ULONG64 index);
-extern SIZE_T  __asm__getNumberOfFunctionsExportedByName(ULONG64 dllBase);
-extern ULONG64 __asm__readMSR(ULONG64 msrAddress);
+extern ULONG64 __asm__getFuncNumsExportedTotal_Via_DllBase(IN PVOID dllBase, OUT SIZE_T* count);
+extern ULONG64 __asm__getFuncNumsExportedByName_Via_DllBase(IN PVOID dllBase, OUT SIZE_T* count);
+extern ULONG64 __asm__getFuncNameByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T index, OUT ULONG64* nameAddress);
+extern ULONG64 __asm__getFuncAddressByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T differWhetherNameExported, IN SIZE_T index, OUT ULONG64* funcAddress);
 
 #define CR0breakOperation(sentence) \
 do\
@@ -172,6 +173,9 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
 );
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
+);
+VOID displayKernelModules(
+    PDRIVER_OBJECT driverObject
 );
 VOID displayAllThreadInfomationByProcessId(
     IN ULONG64 pid
