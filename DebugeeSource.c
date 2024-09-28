@@ -518,6 +518,39 @@ VOID displayAllThreadInfomationByProcessId(
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
 }
+VOID displayKernelModules(
+    PDRIVER_OBJECT driverObject
+)
+{
+    /*                                            DriverLinkListStruct
+    *       ---------------------------------------------------------------------------------------------------
+    *       |                                      [InLoadOrderLinks]                                         |
+    *       |      <NullStructure>        <WholeStructure>                            <WholeStructure>        |
+            |       HeadListEntry           ntoskrnl.exe                                MyDriver1.sys         |
+            |------->  Flink       ---->       Flink        ---->       ...     ---->       Flink       ------|
+                         |                       |                       |                    |
+                         |-----------            |------------           |--------            |----------------
+                                    |                        |                   |                            |
+            |--------  Blink        |--       Blink          |--       ...       |---       Blink             |
+    *       |                                                                                                 |
+    *       |                                                                                                 |
+    *       |-------------------------------------------------------------------------------------------------|
+    */
+    //    Section->LDR->InLoadOrderLinks [_LIST_ENTRY]，连接的是下一个驱动对象的LDR，也就是Section所指向的结构
+    // WholeStruct表示所在域是一个完整的LDR结构。相对应地，NullStruct表示所在域只有一个LIST_ENTRY，没有有效结构，是链表头
+    //              最后一个加载的驱动位于双链表的结尾部分，结尾部分的驱动的下一个是链表头，不存储有效信息
+    ULONG64 driverSectionAddress = (ULONG64)driverObject + 0x28;
+    ULONG64 driverSection = *(ULONG64*)driverSectionAddress;
+    ULONG64 driverModuleListHeadAddress = (ULONG64)((PLIST_ENTRY)driverSection)->Flink;
+    ULONG64 temp = (ULONG64)(((PLIST_ENTRY)driverModuleListHeadAddress)->Flink);
+    while (temp != driverModuleListHeadAddress)
+    {
+        DbgPrint("ModuleName: %wZ\tModuleBaseAddress: 0x%p\t", (PUNICODE_STRING)(temp + 0x58), *(PVOID*)(temp + 0x30));
+        temp = (ULONG64)(((PLIST_ENTRY)temp)->Flink);
+    }
+    //DbgPrint("DriverBaseName: %wZ, DriverDllBase: 0x%p, DriverDllEntryPoint: 0x%p", (PUNICODE_STRING)(temp + 0x48),(PVOID)(temp + 0x30),(PVOID)(temp + 0x38));
+    //一定要加上ULONG64转换，不然就按sizeof(PLIST_ENTRY)寻址去了！以后地址参与运算一律PUCHAR或者ULONG64.
+}
 VOID writeProcessMemory(
     IN ULONG64 pid,
     IN PVOID targetAddress,
@@ -705,7 +738,7 @@ NTSTATUS MyNtOpenProcess(
     PCLIENT_ID         ClientId
 )
 {
-    if (ClientId->UniqueProcess == (HANDLE)4132)
+    if (ClientId->UniqueProcess == (HANDLE)0x1784)
     {
         *ProcessHandle = NULL;
         return STATUS_UNSUCCESSFUL;
@@ -729,7 +762,7 @@ VOID protectProcessProcedure(
     //KiSystemServiceRepeat + 0x7: 4c 8d 1d ae a8 8e 00  
     //--->4c 8d 1d ae a8 8e 00    lea    r11,[rip+0x8ea8ae]        # nt!KeServiceDescriptorTableShadow (0xfffff807510fca40)
     ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
-    /*typedef struct _SYSTEM_SERVICE_DISCRIPTION_TABLE 
+    /*typedef struct _SYSTEM_SERVICE_DISCRIPTION_TABLE
     {
         + 0x00 -> ServiceTableBase;
         + 0x08 -> ServiceCounterTableBase;
@@ -756,7 +789,7 @@ VOID protectProcessProcedure(
     ULONG64 differ = NtOpenProcessAddress - shellCodeSize - 1 - SSDT_ServiceTableBase;
     //本机能保证differ（也就是NtOpenProcessAddress和SSDT_ServiceTableBase的差值）一定不能高于四字节能存储的最大值！
     ULONG targetIndexOffset = (*(ULONG*)&differ) << 4; //0x05B48B30 (0x005B48B3 << 4)
-    UCHAR* pointer2targetIndexOffset = (UCHAR*) & targetIndexOffset;
+    UCHAR* pointer2targetIndexOffset = (UCHAR*)&targetIndexOffset;
     //pointer2targetIndexOffset -> 30 8B B4 05 00 00 00 00
     UCHAR myNtOpenProcessOffset[4] =
     {
@@ -775,26 +808,26 @@ VOID protectProcessProcedure(
 VOID protectProcessRestore(
 )
 {
-    ULONG NtOpenProcessFunctionIndex = 38; 
+    SIZE_T __Nt__Type__FunctionUniformSize = 4;
+    ULONG NtOpenProcessFunctionIndex = 38;
     ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
-    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370; 
+    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370;
     ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
-    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14; 
-    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10); 
+    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14;
+    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10);
     ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
     ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
-    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * 4)) >> 4) + SSDT_ServiceTableBase);
+    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)) >> 4) + SSDT_ServiceTableBase);
     UCHAR restoreINT3Code[12] = { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC };
     SIZE_T shellCodeSize = 12;
     ULONG64 oldCR0 = 0x0;
     __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(NtOpenProcessAddress), restoreINT3Code, shellCodeSize); 
+    memcpy((PVOID)NtOpenProcessAddress, restoreINT3Code, shellCodeSize);
     __asm__WRrestore(oldCR0);
     UCHAR restoreNtOpenProcessOffset[4] =
     {
         0x00, 0x8c, 0xb4, 0x05
     };
-    SIZE_T __Nt__Type__FunctionUniformSize = 4;
     oldCR0 = 0x0;
     __asm__WRbreak(&oldCR0);
     memcpy((PVOID)(SSDT_ServiceTableBase + (ULONG64)(NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)), restoreNtOpenProcessOffset, __Nt__Type__FunctionUniformSize);
