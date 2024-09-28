@@ -355,7 +355,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             0x00007FFF00000000
         );
         getRegionGapAndPages(g_headVAL);
-        if(g_headVAL != NULL)
+        if (g_headVAL != NULL)
         {
             DbgPrint("Process Memory Loading Successfully");
             IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
@@ -416,48 +416,48 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
                 return STATUS_UNSUCCESSFUL;
             }
             ______FURTHER_SEARCH_OPTIONS______
-            //接下来是详细搜索模式判断：
-            if (receiveStructPointer->scanMode == 0)
-            {
-                // isFirstScan:0 // pattern: valid address // patternLen: valid number // scanMode: 0 //
-                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'xxxx');
-                SIZE_T tempBufferLen = receiveStructPointer->patternLen;
-                for (size_t j = 0; j < receiveStructPointer->patternLen && tempBuffer; j++)
+                //接下来是详细搜索模式判断：
+                if (receiveStructPointer->scanMode == 0)
                 {
-                    tempBuffer[j] = receiveStructPointer->pattern[j];
+                    // isFirstScan:0 // pattern: valid address // patternLen: valid number // scanMode: 0 //
+                    PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, receiveStructPointer->patternLen, 'xxxx');
+                    SIZE_T tempBufferLen = receiveStructPointer->patternLen;
+                    for (size_t j = 0; j < receiveStructPointer->patternLen && tempBuffer; j++)
+                    {
+                        tempBuffer[j] = receiveStructPointer->pattern[j];
+                    }
+                    NTSTATUS retStatus = continueSearchMode_Precise(tempBuffer, tempBufferLen);
+                    ExFreePool(tempBuffer);
+                    IOCTL_COMPLETE_MARK(retStatus, 0);
+                    return retStatus;
                 }
-                NTSTATUS retStatus = continueSearchMode_Precise(tempBuffer, tempBufferLen);
-                ExFreePool(tempBuffer);
-                IOCTL_COMPLETE_MARK(retStatus, 0);
-                return retStatus;
-            }
-            else if (receiveStructPointer->scanMode == 1)
-            {
-                // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 1 //
-                NTSTATUS retStatus = continueSearchMode_Larger();
-                IOCTL_COMPLETE_MARK(retStatus, 0);
-                return retStatus;
-            }
-            else if (receiveStructPointer->scanMode == 2)
-            {
-                // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 2 //
-                NTSTATUS retStatus = continueSearchMode_Lower();
-                IOCTL_COMPLETE_MARK(retStatus, 0);
-                return retStatus;
-            }
-            else if (receiveStructPointer->scanMode == 3)
-            {
-                // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 3 //
-                NTSTATUS retStatus = continueSearchMode_Unchanged();
-                IOCTL_COMPLETE_MARK(retStatus, 0);
-                return retStatus;
-            }
+                else if (receiveStructPointer->scanMode == 1)
+                {
+                    // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 1 //
+                    NTSTATUS retStatus = continueSearchMode_Larger();
+                    IOCTL_COMPLETE_MARK(retStatus, 0);
+                    return retStatus;
+                }
+                else if (receiveStructPointer->scanMode == 2)
+                {
+                    // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 2 //
+                    NTSTATUS retStatus = continueSearchMode_Lower();
+                    IOCTL_COMPLETE_MARK(retStatus, 0);
+                    return retStatus;
+                }
+                else if (receiveStructPointer->scanMode == 3)
+                {
+                    // isFirstScan:0 // pattern: NULL // patternLen: 0 // scanMode: 3 //
+                    NTSTATUS retStatus = continueSearchMode_Unchanged();
+                    IOCTL_COMPLETE_MARK(retStatus, 0);
+                    return retStatus;
+                }
             ______FURTHER_SEARCH_OPTIONS______
-            else
-            {
-                IOCTL_COMPLETE_MARK(STATUS_INVALID_LABEL, 0);
-                return STATUS_INVALID_LABEL;
-            }
+                else
+                {
+                    IOCTL_COMPLETE_MARK(STATUS_INVALID_LABEL, 0);
+                    return STATUS_INVALID_LABEL;
+                }
         }
     }
     else if (controlCode == ____$_STOP_SEARCH_PATTERN_$____)
@@ -577,10 +577,10 @@ ULONG checkProtectAttributesForTargetAddress(
     PVAL temp = headVAL;
     while (temp->ValidAddressEntry.Next != NULL)
     {
-        if(
-            (ULONG64)temp->beginAddress < (ULONG64)targetAddress 
+        if (
+            (ULONG64)temp->beginAddress < (ULONG64)targetAddress
             &&
-            (ULONG64)((CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry)->beginAddress)) > (ULONG64)targetAddress
+            (ULONG64)((CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry)->beginAddress)) >(ULONG64)targetAddress
             )
         {
             return temp->memoryProtectAttributes;
