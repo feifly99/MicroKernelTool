@@ -19,7 +19,7 @@ Overall：
            经测试，所有功能调用都没有内存泄露出现
 2024/9/28：
 
-           更新了驱动模块遍历;
+           更新了驱动模块遍历（displayKernelModules函数里面的双链表非常清晰！）
            基于DRIVER_OBJECT->DRIVER_SECTION_InLoadOrderList实现。
            更新了导出表解析的汇编代码，相比于之前的代码：
            1.逻辑更加清晰；
