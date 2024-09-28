@@ -1,13 +1,15 @@
 #include "DebugeeHeader.h"
 #include "DriverUserInteraction.h"
 
+#define ntoskrnlBase 0xFFFFF80050000000
+
 VOID driverUnload(PDRIVER_OBJECT DriverObject)
 {
     DbgPrint("Unloading Driver...\n");
     /*UNICODE_STRING sybName = RTL_CONSTANT_STRING(L"\\??\\ANYIFEI_SYMBOLICLINK_NAME");
     IoDeleteDevice(DriverObject->DeviceObject);
     IoDeleteSymbolicLink(&sybName);*/
-    protectProcessRestore();
+    //protectProcessRestore();
     UNREFERENCED_PARAMETER(DriverObject);
 }
 
@@ -26,8 +28,22 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING RegistryPath)
     driverObject->DriverUnload = driverUnload;
     //displayAllModuleInfomationByProcessId(0x228);
     //displayAllThreadInfomationByProcessId(0x228);
-    protectProcessProcedure();
-    
+    //protectProcessProcedure();
+    //displayKernelModules(driverObject);
+    SIZE_T numsTotal = 0x0, numsName = 0x0, numsDiffer = 0x0;
+    __asm__getFuncNumsExportedTotal_Via_DllBase((PVOID)ntoskrnlBase, &numsTotal);
+    __asm__getFuncNumsExportedByName_Via_DllBase((PVOID)ntoskrnlBase, &numsName);
+    numsDiffer = numsTotal - numsName;
+    ULONG64 nameAddress = 0x0;
+    ULONG64 funcAddress = 0x0;
+    DbgPrint("total: %zu, nameExported: %zu, diff: %zu", numsTotal, numsName, numsDiffer);
+    for (SIZE_T j = 0; j < numsName; j++)
+    {
+        __asm__getFuncNameByIndex_Via_DllBase((PVOID)ntoskrnlBase, j, &nameAddress);
+        __asm__getFuncAddressByIndex_Via_DllBase((PVOID)ntoskrnlBase, numsDiffer, j, &funcAddress);
+        DbgPrint("index: %zu, name: %s", j, (CHAR*)nameAddress);
+        DbgPrint("index: %zu, address: 0x%p", j, (PVOID)funcAddress);
+    }
     return STATUS_SUCCESS;
 }
 
