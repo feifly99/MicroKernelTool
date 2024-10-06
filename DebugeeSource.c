@@ -551,10 +551,43 @@ VOID displayKernelModules(
     //DbgPrint("DriverBaseName: %wZ, DriverDllBase: 0x%p, DriverDllEntryPoint: 0x%p", (PUNICODE_STRING)(temp + 0x48),(PVOID)(temp + 0x30),(PVOID)(temp + 0x38));
     //一定要加上ULONG64转换，不然就按sizeof(PLIST_ENTRY)寻址去了！以后地址参与运算一律PUCHAR或者ULONG64.
 }
+ULONG64 getPointerToSSDT(
+
+)
+{
+    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
+    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370;
+    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
+    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14;
+    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10);
+    ULONG64 pointerToSSDT = currentRIPAddress + keyOffset;
+    return pointerToSSDT;
+}
+
+ULONG64 getAvaliableExecuteMemoryInSSDT(
+
+)
+{
+    ULONG64 pointerToSSDT = getPointerToSSDT();
+    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)pointerToSSDT;
+    ULONG NtOpenProcessFunctionIndex = 38;
+    ULONG64 NtOpenProcessAddress = (ULONG64)(SSDT_ServiceTableBase + ((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * 4)) >> 4));
+    ULONG64 upper13BytesAddress = NtOpenProcessAddress - 13;
+    return upper13BytesAddress;
+}
+
+ULONG64 getSSDTFunctionAddressByIndex(
+    IN ULONG64 index
+)
+{
+    ULONG64 pointerToSSDT = getPointerToSSDT();
+    ULONG64 SSDT_BASE = *(ULONG64*)pointerToSSDT;
+    return SSDT_BASE + (ULONG64)((*(ULONG*)(SSDT_BASE + index * 4)) >> 4);
+}
 VOID writeProcessMemory(
     IN ULONG64 pid,
     IN PVOID targetAddress,
-    IN PVOID content,
+    IN PVOID pointerToContent,
     IN SIZE_T size
 )
 {
@@ -564,7 +597,7 @@ VOID writeProcessMemory(
     KAPC_STATE apc = { 0 };
     KeStackAttachProcess(pe, &apc);
     __asm__WRbreak(&oldCR0);
-    RtlCopyMemory(targetAddress, content, size);
+    RtlCopyMemory(targetAddress, pointerToContent, size);
     __asm__WRrestore(oldCR0);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
@@ -714,6 +747,74 @@ VOID restorePretentProcess(
     __asm__WRrestore(oldCR0);
     ObDereferenceObject(dirtyPE);
 }
+ULONG hookSSDTProcedure(
+    IN ULONG64 functionIndexInSSDT,
+    IN ULONG64 newHookFunctionAddress
+)
+{
+    ULONG64 pointerToSSDT = getPointerToSSDT();
+    ULONG64 executeMemoryAvaliable = getAvaliableExecuteMemoryInSSDT();
+    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)pointerToSSDT;
+    // 以下步骤是在SSDT表中的空余的13个CC字节处写入shellCode.
+    // 写入
+    // mov rax, [_longlongPtr](newHookFunctionAddress);
+    // jmp rax
+    // 对应的汇编指令.
+    ULONG64 newHookFunctionAddressTemp = newHookFunctionAddress;
+    UCHAR* pointerToNewHookFunctionAddressTemp = (UCHAR*)&newHookFunctionAddressTemp;
+    UCHAR newHookFunctionAddressBytes[8] = { 0 };
+    for (SIZE_T j = 0; j < 8; j++)
+    {
+        newHookFunctionAddressBytes[j] = pointerToNewHookFunctionAddressTemp[j];
+    }
+    UCHAR shellCode[12] = {
+        0x48, 0xB8,
+        newHookFunctionAddressBytes[0],
+        newHookFunctionAddressBytes[1],
+        newHookFunctionAddressBytes[2],
+        newHookFunctionAddressBytes[3],
+        newHookFunctionAddressBytes[4],
+        newHookFunctionAddressBytes[5],
+        newHookFunctionAddressBytes[6],
+        newHookFunctionAddressBytes[7],
+        0xFF,0xE0
+    };
+    SIZE_T sizeofShellCode = 12;
+    CR0breakOperation(memcpy((PVOID)executeMemoryAvaliable, (PVOID)shellCode, sizeofShellCode););
+    // 以下步骤是修改SSDT表中Nt*函数的四字节偏移，
+    // 让操作系统寻址时重定位到上面自定义的shellCode起始地址.
+    //SSDT_BASE + SSDT_BASE[INDEX] >> 4 == &function[INDEX].
+    ULONG64 oldFunctionRellocationOffsetAddress = SSDT_ServiceTableBase + functionIndexInSSDT * 4;
+    ULONG oldFunctionRellocationOffset = *(ULONG*)oldFunctionRellocationOffsetAddress;
+    ULONG64 differ = executeMemoryAvaliable - SSDT_ServiceTableBase;
+    differ <<= 4;
+    UCHAR* pointerToDiffer = (UCHAR*)&differ;
+    SIZE_T sizeofDifferBytes = 4;
+    CR0breakOperation(memcpy((PVOID)oldFunctionRellocationOffsetAddress, (PVOID)pointerToDiffer, sizeofDifferBytes););
+    return oldFunctionRellocationOffset;
+}
+
+VOID hookSSDTRestore(
+    IN ULONG64 functionIndexInSSDT,
+    IN ULONG oldRellocationOffset
+)
+{
+    ULONG64 pointerToSSDT = getPointerToSSDT();
+    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)pointerToSSDT;
+
+    ULONG64 shellCodeBeginAddress = (ULONG64)(SSDT_ServiceTableBase + ((*(ULONG*)(SSDT_ServiceTableBase + functionIndexInSSDT * 4)) >> 4));
+
+    UCHAR restoreCode[12] = { 0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC,0xCC };
+    SIZE_T sizeofRestoreCode = 12;
+    CR0breakOperation(memcpy((PVOID)shellCodeBeginAddress, (PVOID)restoreCode, sizeofRestoreCode););
+
+    ULONG64 oldFunctionRellocationOffsetAddress = SSDT_ServiceTableBase + functionIndexInSSDT * 4;
+    ULONG oldRellocationOffsetTemp = oldRellocationOffset;
+    UCHAR* pointerToOldRellocationOffsetTemp = (UCHAR*)&oldRellocationOffsetTemp;
+    SIZE_T sizeofOldRellocationOffsetTemp = 4;
+    CR0breakOperation(memcpy((PVOID)oldFunctionRellocationOffsetAddress, (PVOID)pointerToOldRellocationOffsetTemp, sizeofOldRellocationOffsetTemp););
+    return;
+}
 VOID readImagePathNameAndCommandLine(
     IN HANDLE pid
 )
@@ -729,109 +830,6 @@ VOID readImagePathNameAndCommandLine(
     DbgPrint("CommandLine: %wZ", (PUNICODE_STRING)CommandLineAddress);
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
-    return;
-}
-NTSTATUS MyNtOpenProcess(
-    PHANDLE            ProcessHandle,
-    ACCESS_MASK        DesiredAccess,
-    POBJECT_ATTRIBUTES ObjectAttributes,
-    PCLIENT_ID         ClientId
-)
-{
-    if (ClientId->UniqueProcess == (HANDLE)0x1784)
-    {
-        *ProcessHandle = NULL;
-        return STATUS_UNSUCCESSFUL;
-    }
-    else
-    {
-        return NtOpenProcess(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
-    }
-}
-VOID protectProcessProcedure(
-)
-{
-    ULONG NtOpenProcessFunctionIndex = 38; //0x26
-    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
-    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370; //Windows10 x64 22H2 Only.
-    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
-    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14; //注意是加14，因为RIP存着该指令的下一条指令所在的地址而不是此指令的地址！
-    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10); //取得0x008ea8ae这个关键偏移，此偏移加上此指令的地址就可以得到SSDT表的地址.
-    //KiSystemServiceRepeat      : 4c 8d 15 35 f7 9e 00  
-    //--->4c 8d 15 35 f7 9e 00    lea    r10,[rip+0x9ef735]        # nt!KeServiceDescriptorTable (0xfffff807512018c0)
-    //KiSystemServiceRepeat + 0x7: 4c 8d 1d ae a8 8e 00  
-    //--->4c 8d 1d ae a8 8e 00    lea    r11,[rip+0x8ea8ae]        # nt!KeServiceDescriptorTableShadow (0xfffff807510fca40)
-    ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
-    /*typedef struct _SYSTEM_SERVICE_DISCRIPTION_TABLE
-    {
-        + 0x00 -> ServiceTableBase;
-        + 0x08 -> ServiceCounterTableBase;
-        + 0x10 -> NumberOfServices;
-        +0x18  -> ParamTableBase;
-    };*/
-    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
-    //算法：ServiceTableBase[index] >> 4 + ServiceTableBase = "第index个导出函数的首地址".
-    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * 4)) >> 4) + SSDT_ServiceTableBase);
-    ULONG64 MyNtOpenProcessAddress = (ULONG64)MyNtOpenProcess;
-    UCHAR* pointer = (UCHAR*)&MyNtOpenProcessAddress; //把地址转化成八个单独的字节，存入shellCode
-    UCHAR shellCode[12] =
-    {
-        0x48, 0xB8, pointer[0], pointer[1], pointer[2], pointer[3], pointer[4], pointer[5], pointer[6], pointer[7],
-        //mov rax, qword ptr [(_longlong64)pointer_(MyNtOpenProcessAddress)]
-        0xFF, 0xE0
-        //jmp rax
-    };
-    SIZE_T shellCodeSize = 12;
-    ULONG64 oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(NtOpenProcessAddress - shellCodeSize - 1), shellCode, shellCodeSize); //仅在本机器上可用，本机器上确实在NTOPENPROCESS上方存在13个0xCC字节！
-    __asm__WRrestore(oldCR0);
-    ULONG64 differ = NtOpenProcessAddress - shellCodeSize - 1 - SSDT_ServiceTableBase;
-    //本机能保证differ（也就是NtOpenProcessAddress和SSDT_ServiceTableBase的差值）一定不能高于四字节能存储的最大值！
-    ULONG targetIndexOffset = (*(ULONG*)&differ) << 4; //0x05B48B30 (0x005B48B3 << 4)
-    UCHAR* pointer2targetIndexOffset = (UCHAR*)&targetIndexOffset;
-    //pointer2targetIndexOffset -> 30 8B B4 05 00 00 00 00
-    UCHAR myNtOpenProcessOffset[4] =
-    {
-        pointer2targetIndexOffset[0],
-        pointer2targetIndexOffset[1],
-        pointer2targetIndexOffset[2],
-        pointer2targetIndexOffset[3]
-    };
-    SIZE_T __Nt__Type__FunctionUniformSize = 4;
-    oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(SSDT_ServiceTableBase + (ULONG64)(NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)), myNtOpenProcessOffset, __Nt__Type__FunctionUniformSize);
-    __asm__WRrestore(oldCR0);
-    return;
-}
-VOID protectProcessRestore(
-)
-{
-    SIZE_T __Nt__Type__FunctionUniformSize = 4;
-    ULONG NtOpenProcessFunctionIndex = 38;
-    ULONG64 KiSystemCall64ShadowAddress = __asm__readMSR(0xC0000082);
-    ULONG64 KiSystemServiceStart = KiSystemCall64ShadowAddress - 0x6073C0 + 0x370;
-    ULONG64 KiSystemServiceRepeat = KiSystemServiceStart + 0x14;
-    ULONG64 currentRIPAddress = KiSystemServiceRepeat + 14;
-    ULONG keyOffset = *(ULONG*)(KiSystemServiceRepeat + 10);
-    ULONG64 SSDT_Address = currentRIPAddress + keyOffset;
-    ULONG64 SSDT_ServiceTableBase = *(ULONG64*)SSDT_Address;
-    ULONG64 NtOpenProcessAddress = (ULONG64)(((*(ULONG*)(SSDT_ServiceTableBase + NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)) >> 4) + SSDT_ServiceTableBase);
-    UCHAR restoreINT3Code[12] = { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC };
-    SIZE_T shellCodeSize = 12;
-    ULONG64 oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)NtOpenProcessAddress, restoreINT3Code, shellCodeSize);
-    __asm__WRrestore(oldCR0);
-    UCHAR restoreNtOpenProcessOffset[4] =
-    {
-        0x00, 0x8c, 0xb4, 0x05
-    };
-    oldCR0 = 0x0;
-    __asm__WRbreak(&oldCR0);
-    memcpy((PVOID)(SSDT_ServiceTableBase + (ULONG64)(NtOpenProcessFunctionIndex * __Nt__Type__FunctionUniformSize)), restoreNtOpenProcessOffset, __Nt__Type__FunctionUniformSize);
-    __asm__WRrestore(oldCR0);
     return;
 }
 VOID ExFreeResultSavedLink(
