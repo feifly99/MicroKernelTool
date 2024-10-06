@@ -180,10 +180,19 @@ VOID displayKernelModules(
 VOID displayAllThreadInfomationByProcessId(
     IN ULONG64 pid
 );
+ULONG64 getPointerToSSDT(
+
+);
+ULONG64 getAvaliableExecuteMemoryInSSDT(
+
+);
+ULONG64 getSSDTFunctionAddressByIndex(
+    IN ULONG64 index
+);
 VOID writeProcessMemory(
     IN ULONG64 pid,
     IN PVOID targetAddress,
-    IN PVOID content,
+    IN PVOID pointerToContent,
     IN SIZE_T size
 );
 VOID processHiddenProcedure(
@@ -201,18 +210,16 @@ VOID processPretentProcedure(
 VOID restorePretentProcess(
     IN PPPL headPPL
 );
+ULONG hookSSDTProcedure(
+    IN ULONG64 functionIndexInSSDT,
+    IN ULONG64 newHookFunctionAddress
+);
+VOID hookSSDTRestore(
+    IN ULONG64 functionIndexInSSDT,
+    IN ULONG oldRellocationOffset
+);
 VOID readImagePathNameAndCommandLine(
     IN HANDLE pid
-);
-NTSTATUS MyNtOpenProcess(
-    PHANDLE            ProcessHandle,
-    ACCESS_MASK        DesiredAccess,
-    POBJECT_ATTRIBUTES ObjectAttributes,
-    PCLIENT_ID         ClientId
-);
-VOID protectProcessProcedure(
-);
-VOID protectProcessRestore(
 );
 //FreeLinkLists
 VOID ExFreeResultSavedLink(
