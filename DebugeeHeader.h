@@ -8,6 +8,8 @@
 
 #define __PLACE_HOLDER__
 
+extern ULONG64 __asm__testProc();
+extern ULONG64 __asm__readRCX();
 extern ULONG64 __asm__readDR0();
 extern ULONG64 __asm__readCR0();
 extern ULONG64 __asm__WRbreak(IN ULONG64* oldCR0Address);
@@ -19,10 +21,10 @@ extern ULONG64 __asm__PDTrestore(IN ULONG64 oldCR3Value);
 extern ULONG64 __asm__getImagePathNameAddress(IN ULONG64 pe);
 extern ULONG64 __asm__readMSR(IN ULONG64 msrAddress);
 extern ULONG64 __asm__getNextDriverNameAddress(IN ULONG64 pDriverObject);
-extern ULONG64 __asm__getFuncNumsExportedTotal_Via_DllBase(IN PVOID dllBase, OUT SIZE_T* count);
-extern ULONG64 __asm__getFuncNumsExportedByName_Via_DllBase(IN PVOID dllBase, OUT SIZE_T* count);
-extern ULONG64 __asm__getFuncNameByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T index, OUT ULONG64* nameAddress);
-extern ULONG64 __asm__getFuncAddressByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T differWhetherNameExported, IN SIZE_T index, OUT ULONG64* funcAddress);
+extern SIZE_T __asm__getFuncNumsExportedTotal_Via_DllBase(IN PVOID dllBase);
+extern SIZE_T __asm__getFuncNumsExportedByName_Via_DllBase(IN PVOID dllBase);
+extern PUCHAR __asm__getFuncNameByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T index);
+extern PVOID __asm__getFuncAddressByIndex_Via_DllBase(IN PVOID dllBase, IN SIZE_T differWhetherNameExported, IN SIZE_T index);
 
 #define CR0breakOperation(sentence) \
 do\
@@ -35,9 +37,12 @@ do\
     __PLACE_HOLDER__;\
 }while(0);
 
+#define ckU64(sentence) DbgPrint("%s: %llX, %llu", #sentence, (sentence), (sentence))
+
 typedef ULONG64 UL64;
 typedef MEMORY_INFORMATION_CLASS* PMEMORY_INFORMATION_CLASS;
 typedef PEPROCESS* PPEPROCESS;
+typedef unsigned int UINT;
 
 typedef struct _ValidAddressList
 {
@@ -171,6 +176,9 @@ VOID buildDoubleLinkedAddressListForPatternStringByKMPAlgorithm(
     IN SIZE_T patternLen,
     OUT PRSL* headRSL
 );
+VOID DbgPrintF(
+    float* floatNumPointer
+);
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
 );
@@ -188,6 +196,26 @@ ULONG64 getAvaliableExecuteMemoryInSSDT(
 );
 ULONG64 getSSDTFunctionAddressByIndex(
     IN ULONG64 index
+);
+ULONG64 getPIDByProcessName(
+    IN PUCHAR name
+);
+ULONG64 getDllInLoadAddress(
+    IN HANDLE pid,
+    IN PUNICODE_STRING dllName
+);
+VOID displayDllExportFunctionTable(
+    IN HANDLE pid,
+    IN PVOID dllBaseInLoad
+);
+ULONG64 getDllExportFunctionAddressByName(
+    IN HANDLE pid,
+    IN PVOID dllBaseInLoad,
+    IN PUCHAR funcName
+);
+UCHAR readByte(
+    IN HANDLE pid,
+    IN PVOID address
 );
 VOID writeProcessMemory(
     IN ULONG64 pid,
@@ -209,6 +237,12 @@ VOID processPretentProcedure(
 );
 VOID restorePretentProcess(
     IN PPPL headPPL
+);
+VOID hideThisDriver(
+    IN PDRIVER_OBJECT driverObject
+);
+VOID restoreThisDriver(
+    IN PDRIVER_OBJECT driverObject
 );
 ULONG hookSSDTProcedure(
     IN ULONG64 functionIndexInSSDT,
