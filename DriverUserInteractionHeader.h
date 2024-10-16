@@ -49,50 +49,35 @@ do\
 	IoCompleteRequest(pIrp, IO_NO_INCREMENT);\
 }while (0); \
 
-typedef struct _SearchInput
+/*
+
+	#define __FIRST_PRECISE_SCAN__ 0x80
+	#define __FIRST_FUZZY_SCAN__ 0x90
+
+	#define __TYPE_BYTE__ 0xA1
+	#define __TYPE_WORD__ 0xA2
+	#define __TYPE_DWORD__ 0xA3
+	#define __TYPE_QWORD__ 0xA4
+	#define __TYPE_PATTERN__ 0xA5
+	#define __TYPE_FLOAT__ 0xA6
+	#define __TYPE_DOUBLE__ 0xA7
+	#define __TYPE_NOT_FLOATING__ 0xA8
+
+	#define __Continue_PRECISE__ 0xC1
+	#define __Continue_LARGER__ 0xC2
+	#define __Continue_LOWER__ 0xC3
+	#define __Continue_UNCHANGED__ 0xC4
+	#define __Continue_REGION__ 0xC5
+
+*/
+
+typedef struct _Driver_User_SearchModeInput
 {
 	BOOLEAN isFirstScan;
-	//inputType: [0] 1byte / [1] 2bytes / [2] 4bytes / [3] 8bytes / [4] (IEEE754)float_4bytes / [5] (IEEE754)double_8bytes / [6] pattern match 
-	UCHAR inputType;
-	//scanMode: [0] 精确 / [1] 变大 / [2] 变小 / [3] 未变动 / [4] 位于两数之间
-	UCHAR scanMode; 
-
-	union _globalSearchType
-	{
-		union _findNumber
-		{
-			struct _integerType
-			{
-				union _integerNumberReal
-				{
-					UCHAR byte_1;
-					USHORT byte_2;
-					UINT byte_4;
-					ULONG64 byte_8;
-				}integerNumberReal;
-				UCHAR integerTolerance;
-			}integerType;
-			struct _floatingType
-			{
-				union _floatingNumberReal
-				{
-					float byte_float;
-					double byte_double;
-					ULONG float_hex;
-					ULONG64 double_hex;
-				}floatingNumberReal;
-				UCHAR floatingTolerance;
-			}floatingType;
-		}findNumber;
-
-		struct _findPattern
-		{
-			PUCHAR patternInput;
-			UCHAR patternLenInput;
-		}findPattern;
-
-	}globalSearchType;
-}SI, *PSI;
+	UCHAR dataType; //begin with __TYPE_
+	UCHAR scanMode; //begin with __FIRST_ or __Continue_
+	PSMI smi;
+}D_U_SMI, *PD_U_SMI;
 
 typedef struct _WriteProcessMemoryInput
 {
