@@ -1,7 +1,8 @@
-#include "DriverUserInteraction.h"
+#include "DriverUserInteractionHeader.h"
 
 #pragma warning(disable:6387)
 #pragma warning(disable:6011)
+#pragma warning(disable:4702)
 
 __INIT_GLOBAL__DEFINES__;
 static CLIENT_ID g_cid = { 0 };
@@ -17,7 +18,6 @@ __PROCESS_MEMORY_SPACE_DEFINES__;
 
 __SEARCH_OUTCOME_DEFINES__;
 static PRSL g_headRSL = NULL;
-static SIZE_T g_mostRecentPatternLen = 0x0;
 __SEARCH_OUTCOME_DEFINES__;
 
 __PROCESS_HIDEN_DEFINES__;
@@ -111,18 +111,51 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     }
     else if (controlCode == ____$_SEARCH_PROCEDURE_$____)
     {
+        PD_U_SMI temp = (PD_U_SMI)pIrp->AssociatedIrp.SystemBuffer;
+        PD_U_SMI res = (PD_U_SMI)ExAllocatePoolWithTag(PagedPool, sizeof(D_U_SMI), 'zppz');
+        res->isFirstScan = temp->isFirstScan;
+        res->dataType = temp->dataType;
+        res->scanMode = temp->scanMode;
+        if(temp->smi != NULL)
+        {
+            res->smi = (PSMI)ExAllocatePoolWithTag(PagedPool, sizeof(SMI), 'zuuz');
+            res->smi->preciseMode.dataLen = temp->smi->preciseMode.dataLen;
+            res->smi->preciseMode.value_hexBytePointer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, res->smi->preciseMode.dataLen, 'zggz');
+            memcpy(res->smi->preciseMode.value_hexBytePointer, temp->smi->preciseMode.value_hexBytePointer, res->smi->preciseMode.dataLen);
+            DbgPrint("%llu", res->smi->preciseMode.dataLen);
+        }
+        if (res->isFirstScan == 1)
+        {
+            buildDoubleLinkedAddressListForScaningResult(
+                (ULONG64)g_cid.UniqueProcess,
+                res->scanMode,
+                res->smi,
+                res->dataType,
+                g_headVAL,
+                &g_headRSL
+            );
+            printListRSL(g_headRSL);
+        }
+        else
+        {
+            continueSearch(
+                (ULONG64)g_cid.UniqueProcess,
+                res->scanMode,
+                res->dataType,
+                res->smi,
+                &g_headRSL
+            );
+        }
         IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
         return STATUS_UNSUCCESSFUL;
     }
     else if (controlCode == ____$_STOP_SEARCH_PATTERN_$____)
     {
-        //KeBugCheckEx(0X12345678, 0, 0, 0, 0);
-        if (g_headRSL)
+        if (g_headRSL != NULL)
         {
             ExFreeResultSavedLink(&g_headRSL);
             g_headRSL = NULL;
         }
-        g_mostRecentPatternLen = 0x0;
         IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
         return STATUS_SUCCESS;
     }
@@ -180,40 +213,31 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     {
         //KeBugCheckEx(0X9ABCDEF0, 0, 0, 0, 0);
         DbgPrint("here!");
-        if (g_headHPL != NULL)
-        {
-            restoreHiddenProcess(g_headHPL);
-        }
-        if (g_headPPL != NULL)
-        {
-            restorePretentProcess(g_headPPL);
-        }
-        if (g_headVAL)
+        if (g_headVAL != NULL)
         {
             ExFreeValidAddressLink(&g_headVAL);
             g_headVAL = NULL;
         }
-        if (g_headRSL)
+        if (g_headRSL != NULL)
         {
             ExFreeResultSavedLink(&g_headRSL);
             g_headRSL = NULL;
         }
-        if (g_headHPL)
+        if (g_headHPL != NULL)
         {
             ExFreeHiddenProcessLink(&g_headHPL);
             g_headHPL = NULL;
         }
-        if (g_headPPL)
+        if (g_headPPL != NULL)
         {
             ExFreePretentProcessLink(&g_headPPL);
             g_headPPL = NULL;
         }
-        if (g_kernelProcess)
+        if (g_kernelProcess != NULL)
         {
             ZwClose(g_kernelProcess);
             g_kernelProcess = NULL;
         }
-        g_mostRecentPatternLen = 0x0;
         IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
         return STATUS_SUCCESS;
     }
