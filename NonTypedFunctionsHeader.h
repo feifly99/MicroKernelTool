@@ -15,6 +15,9 @@ VOID DbgPrintD(
     OUT_OPT INT* _integer,
     OUT_OPT ULONG64* _fraction
 );
+ULONG64 getCR3SaferByPID(
+    IN ULONG64 pid
+);
 NTSTATUS readPhysicalAddress(
     IN PVOID physicalAddress,
     IN PVOID receivedBuffer,
