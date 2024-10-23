@@ -1,49 +1,150 @@
-.data
-
-	t1 QWORD 7FFD513C0542h
-	t2 QWORD 7FFD51531530h
-	t3 QWORD 7FFD5152A728h
-	t4 QWORD 7FFD5141E4D0h
-	t5 QWORD 7FFD51379EB0h
-
 .code
-	
-	__asm__testProc PROC
-		mov qword ptr [rsp + 8], rbx
-		mov qword ptr [rsp + 10h], rsi
-		push rdi
-		sub rsp, 20h
-		mov rdi, rcx
-		test rcx, rcx
-		je labelss
-		lea rdx, qword ptr [t2]
-		call qword ptr [t3]
-		nop dword ptr [rax + rax]
-	labelss:
-		xor r8d, r8d
-		xor rcx, rdi
-		call t5
-		mov rbx, qword ptr [rsp + 30h]
-		mov rsi, qword ptr [rsp + 38h]
-		add rsp, 20h
-		pop rdi
-		ret
-	__asm__testProc ENDP
 
-	__asm__readRCX PROC
+	__asm__getIDT PROC
+		sidt qword ptr [rcx]
+		ret
+	__asm__getIDT ENDP
+
+	__asm__jump PROC
+		jmp rcx
+	__asm__jump ENDP
+
+	__asm__readAllRegistors PROC ;ULONG64 __asm__checkAllRegistors(ULONG64* registorSavedPointer); //20
+		push r15
+		mov r15, rcx
+		mov qword ptr [r15 + 0], rax
+		mov qword ptr [r15 + 8h], rbx
+		mov qword ptr [r15 + 10h], rcx
+		mov qword ptr [r15 + 18h], rdx
+		mov qword ptr [r15 + 20h], rdi
+		mov qword ptr [r15 + 28h], rsi
+		mov qword ptr [r15 + 30h], rbp
+		mov qword ptr [r15 + 38h], rsp
+		mov qword ptr [r15 + 40h], r8
+		mov qword ptr [r15 + 48h], r9
+		mov rax, cr0
+		mov qword ptr [r15 + 50h], rax
+		mov rax, cr2
+		mov qword ptr [r15 + 58h], rax
+		mov rax, cr3
+		mov qword ptr [r15 + 60h], rax
+		mov rax, cr4
+		mov qword ptr [r15 + 68h], rax
+		mov rax, dr0
+		mov qword ptr [r15 + 70h], rax
+		mov rax, dr1
+		mov qword ptr [r15 + 78h], rax
+		mov rax, dr2
+		mov qword ptr [r15 + 80h], rax
+		mov rax, dr3
+		mov qword ptr [r15 + 88h], rax
+		mov rax, dr6
+		mov qword ptr [r15 + 90h], rax
+		mov rax, dr7
+		mov qword ptr [r15 + 98h], rax
+		pop r15
+		ret
+	__asm__readAllRegistors ENDP
+
+	__asm__getRAX PROC
+		mov rax, rax
+		ret
+	__asm__getRAX ENDP
+
+	__asm__getRBX PROC
+		mov rax, rbx
+		ret
+	__asm__getRBX ENDP
+
+	__asm__getRCX PROC
 		mov rax, rcx
 		ret
-	__asm__readRCX ENDP
+	__asm__getRCX ENDP
 
-	__asm__readDR0 PROC
-		mov rax, dr0
+	__asm__getRDX PROC
+		mov rax, rdx
 		ret
-	__asm__readDR0 ENDP
+	__asm__getRDX ENDP
 
-	__asm__readCR0 PROC
+	__asm__getRSI PROC
+		mov rax, rsi
+		ret
+	__asm__getRSI ENDP
+
+	__asm__getRDI PROC
+		mov rax, rdi
+		ret
+	__asm__getRDI ENDP
+
+	__asm__getRBP PROC
+		mov rax, rbp
+		ret
+	__asm__getRBP ENDP
+
+	__asm__getRSP PROC
+		mov rax, rsp
+		ret
+	__asm__getRSP ENDP
+
+	__asm__getR8 PROC
+		mov rax, R8
+		ret
+	__asm__getR8 ENDP
+
+	__asm__getR9 PROC
+		mov rax, R9
+		ret
+	__asm__getR9 ENDP
+
+	__asm__getCR0 PROC
 		mov rax, cr0
 		ret
-	__asm__readCR0 ENDP
+	__asm__getCR0 ENDP
+
+	__asm__getCR2 PROC
+		mov rax, cr2
+		ret
+	__asm__getCR2 ENDP
+
+	__asm__getCR3 PROC
+		mov rax, cr3
+		ret
+	__asm__getCR3 ENDP
+
+	__asm__getCR4 PROC
+		mov rax, cr4
+		ret
+	__asm__getCR4 ENDP
+
+	__asm__getDR0 PROC
+		mov rax, dr0
+		ret
+	__asm__getDR0 ENDP
+
+	__asm__getDR1 PROC
+		mov rax, dr1
+		ret
+	__asm__getDR1 ENDP
+
+	__asm__getDR2 PROC
+		mov rax, dr2
+		ret
+	__asm__getDR2 ENDP
+
+	__asm__getDR3 PROC
+		mov rax, dr3
+		ret
+	__asm__getDR3 ENDP
+
+	__asm__getDR6 PROC
+		mov rax, dr6
+		ret
+	__asm__getDR6 ENDP
+
+	__asm__getDR7 PROC
+		mov rax, dr7
+		ret
+	__asm__getDR7 ENDP
 
 	__asm__WRbreak PROC ; ULONG64 __asm__WRbreak(IN ULONG64* oldCR0Address)
 		mov rax, cr0
