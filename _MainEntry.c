@@ -61,14 +61,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
         0xFF,0xE0
     };
     CR0breakOperation(memcpy((PVOID)targetFuncAddress, testsss, 12););*/
-    PEPROCESS pe = NULL;
-    KAPC_STATE apc = { 0 };
-    PsLookupProcessByProcessId((HANDLE)0x1FAC, &pe);
-    KeStackAttachProcess(pe, &apc);
-    ULONG64 cr3 = __asm__getCR3();
-    KeUnstackDetachProcess(&apc);
-    ObDereferenceObject(pe);
+    ULONG64 cr3 = getCR3SaferByPID(0x3384);
     UCHAR x[8] = { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC };
-    writePhysicalMemory(getPhysicalAddressByCR3AndVirtualAddress(cr3, 0x7FFC3C681118), x, 8);
+    writePhysicalMemory(getPhysicalAddressByCR3AndVirtualAddress(cr3, 0x7FFC5843D1B8), x, 8);
     return STATUS_SUCCESS;
 }
