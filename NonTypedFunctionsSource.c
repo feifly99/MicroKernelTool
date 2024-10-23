@@ -96,6 +96,16 @@ VOID DbgPrintD(
     }
     return;
 }
+ULONG64 getCR3SaferByPID(
+    IN ULONG64 pid
+)
+{
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    ULONG64 cr3 = *(ULONG64*)((ULONG64)pe + 0x28);
+    ObDereferenceObject(pe);
+    return cr3;
+}
 NTSTATUS readPhysicalAddress(
     IN PVOID physicalAddress,
     IN PVOID receivedBuffer,
