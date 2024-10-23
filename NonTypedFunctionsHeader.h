@@ -3,6 +3,8 @@
 
 #include "DriverBaseHeader.h"
 
+#define REG_NUM 20
+
 VOID DbgPrintF(
     IN float* floatNumPointer,
     OUT_OPT INT* _integer,
@@ -12,6 +14,36 @@ VOID DbgPrintD(
     IN double* doubleNumPointer,
     OUT_OPT INT* _integer,
     OUT_OPT ULONG64* _fraction
+);
+NTSTATUS readPhysicalAddress(
+    IN PVOID physicalAddress,
+    IN PVOID receivedBuffer,
+    IN SIZE_T readSize,
+    IN_OPT SIZE_T* bytesTransferred
+);
+ULONG64 getPhysicalAddressByCR3AndVirtualAddress(
+    IN ULONG64 cr3,
+    IN ULONG64 VirtualAddress
+);
+VOID writePhysicalMemory(
+    IN ULONG64 physicalAddress,
+    IN PUCHAR writeBuffer,
+    IN SIZE_T writeLenLessThan0x1000
+);
+VOID displayAllIDTFunctionAddress(
+
+);
+VOID readAllRegistors(
+    ULONG64 pid
+);
+VOID change64ValueBit(
+    ULONG64* target64ValuePointer,
+    SIZE_T bitLoc,
+    UCHAR targetBinaryBitValue
+);
+UCHAR get64ValueBit(
+    ULONG64 target64Value,
+    SIZE_T bitLoc
 );
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
