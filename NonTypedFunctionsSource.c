@@ -96,6 +96,150 @@ VOID DbgPrintD(
     }
     return;
 }
+NTSTATUS readPhysicalAddress(
+    IN PVOID physicalAddress,
+    IN PVOID receivedBuffer,
+    IN SIZE_T readSize,
+    IN_OPT SIZE_T* bytesTransferred
+)
+{
+    MM_COPY_ADDRESS Read = { 0 };
+    Read.PhysicalAddress.QuadPart = (LONG64)physicalAddress;
+    if (bytesTransferred == NULL)
+    {
+        SIZE_T ret = 0;
+        return MmCopyMemory(receivedBuffer, Read, readSize, MM_COPY_MEMORY_PHYSICAL, &ret);
+    }
+    else
+    {
+        return MmCopyMemory(receivedBuffer, Read, readSize, MM_COPY_MEMORY_PHYSICAL, bytesTransferred);
+    }
+}
+ULONG64 getPhysicalAddressByCR3AndVirtualAddress(
+    IN ULONG64 cr3,
+    IN ULONG64 VirtualAddress
+)
+{
+    cr3 = (cr3 >> 12) << 12;
+    ULONG64 ultimatePhysicalAddress = 0;
+    ULONG64 ultimatePhysicalAddressPageHeader = 0;
+    ULONG64 VPO = (VirtualAddress << 52) >> 52;
+    ULONG64 PFN4 = ((VirtualAddress << 43) >> 43) >> 12;
+    ULONG64 PFN3 = ((VirtualAddress << 34) >> 34) >> 21;
+    ULONG64 PFN2 = ((VirtualAddress << 25) >> 25) >> 30;
+    ULONG64 PFN1 = ((VirtualAddress << 16) >> 16) >> 39;
+    SIZE_T ret = 0;
+    ULONG64 a = 0, b = 0, c = 0;
+    readPhysicalAddress((PVOID)(cr3 + 8 * PFN1), &a, sizeof(ULONG64), &ret);
+    if (ret == 0) return 0;
+    a = (((a << 24) >> 24) >> 12) << 12;
+    readPhysicalAddress((PVOID)(a + 8 * PFN2), &b, sizeof(ULONG64), &ret);
+    if (ret == 0) return 0;
+    b = (((b << 24) >> 24) >> 12) << 12;
+    readPhysicalAddress((PVOID)(b + 8 * PFN3), &c, sizeof(ULONG64), &ret);
+    if (ret == 0) return 0;
+    c = (((c << 24) >> 24) >> 12) << 12;
+    readPhysicalAddress((PVOID)(c + 8 * PFN4), &ultimatePhysicalAddressPageHeader, sizeof(ULONG64), &ret);
+    if (ret == 0) return 0;
+    ultimatePhysicalAddressPageHeader = (((ultimatePhysicalAddressPageHeader << 24) >> 24) >> 12) << 12;
+    ultimatePhysicalAddress = ultimatePhysicalAddressPageHeader + VPO;
+    return ultimatePhysicalAddress;
+}
+VOID writePhysicalMemory(
+    IN ULONG64 physicalAddress,
+    IN PUCHAR writeBuffer,
+    IN SIZE_T writeLenLessThan0x1000
+)
+{
+    PHYSICAL_ADDRESS p_address = { 0 };
+    p_address.QuadPart = (LONG64)physicalAddress;
+    MEMORY_CACHING_TYPE p_type = MmNonCachedUnordered;
+    PVOID kernelAddressMappedByPhysical = MmMapIoSpace(p_address, 0x1000, p_type);
+    CR0breakOperation(memcpy(kernelAddressMappedByPhysical, writeBuffer, writeLenLessThan0x1000););
+    MmUnmapIoSpace(kernelAddressMappedByPhysical, 0x1000);
+    return;
+}
+VOID displayAllIDTFunctionAddress(
+
+)
+{
+    ULONG64 x = 0;
+    __asm__getIDT(&x);
+    ULONG64 base = (0xFFFFULL << 48) + (x >> 16);
+    ULONG64 frac1 = 0;
+    ULONG64 frac2 = 0;
+    for (SIZE_T j = 0; j < 0xFF; j++)
+    {
+        frac1 = *(ULONG64*)base;
+        frac2 = *(ULONG64*)(base + 8);
+        DbgPrint("[%zX]: 0x%llX", j, (ULONG64)(frac2 << 32) + (ULONG64)((frac1 >> 48) << 16) + (ULONG64)((frac1 << 48) >> 48));
+        base += 0x10;
+    }
+    return;
+}
+VOID readAllRegistors(
+    ULONG64 pid
+)
+{
+    PEPROCESS pe = NULL;
+    KAPC_STATE apc = { 0 };
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KeStackAttachProcess(pe, &apc);
+    ULONG64 REG_ARRAY[REG_NUM] = { 0 };
+    __asm__readAllRegistors(REG_ARRAY);
+    DbgPrint("rax: %llX", REG_ARRAY[0]);
+    DbgPrint("rbx: %llX", REG_ARRAY[1]);
+    DbgPrint("rcx: %llX", REG_ARRAY[2]);
+    DbgPrint("rdx: %llX", REG_ARRAY[3]);
+    DbgPrint("rdi: %llX", REG_ARRAY[4]);
+    DbgPrint("rsi: %llX", REG_ARRAY[5]);
+    DbgPrint("rbp: %llX", REG_ARRAY[6]);
+    DbgPrint("rsp: %llX", REG_ARRAY[7]);
+    DbgPrint("r8: %llX",  REG_ARRAY[8]);
+    DbgPrint("r9: %llX",  REG_ARRAY[9]);
+    DbgPrint("cr0: %llX", REG_ARRAY[10]);
+    DbgPrint("cr2: %llX", REG_ARRAY[11]);
+    DbgPrint("cr3: %llX", REG_ARRAY[12]);
+    DbgPrint("cr4: %llX", REG_ARRAY[13]);
+    DbgPrint("dr0: %llX", REG_ARRAY[14]);
+    DbgPrint("dr1: %llX", REG_ARRAY[15]);
+    DbgPrint("dr2: %llX", REG_ARRAY[16]);
+    DbgPrint("dr3: %llX", REG_ARRAY[17]);
+    DbgPrint("dr6: %llX", REG_ARRAY[18]);
+    DbgPrint("dr7: %llX", REG_ARRAY[19]);
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+}
+VOID change64ValueBit(
+    ULONG64* target64ValuePointer,
+    SIZE_T bitLoc,
+    UCHAR targetBinaryBitValue
+) 
+{
+    if (bitLoc >= 64) 
+    {
+        return; 
+    }
+    if (targetBinaryBitValue == 1) 
+    {
+        *target64ValuePointer |= (1ULL << bitLoc);
+    }
+    else 
+    {
+        *target64ValuePointer &= ~(1ULL << bitLoc);
+    }
+}
+UCHAR get64ValueBit(
+    ULONG64 target64Value,
+    SIZE_T bitLoc
+)
+{
+    if (bitLoc >= 64)
+    {
+        return 0xFF;
+    }
+    return (UCHAR)((target64Value & (1ULL << bitLoc)) >> bitLoc);
+}
 VOID displayAllModuleInfomationByProcessId(
     IN ULONG64 pid
 )
