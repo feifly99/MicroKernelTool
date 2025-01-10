@@ -65,7 +65,7 @@
 
 	__vasm__VMCLEAR PROC
 		push rcx
-		VMCLEAR qword ptr [rcx]
+		VMCLEAR qword ptr [rsp]
 		pop rax
 		ret
 	__vasm__VMCLEAR ENDP
