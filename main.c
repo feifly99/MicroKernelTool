@@ -1,21 +1,22 @@
 #include "DriverUserInteractionHeader.h"
 
-CONST INT _fltused = 0;
+#pragma warning(disable: 28182)
+#pragma warning(disable: 6011)
 
-ULONG64 targetFuncAddress = 0xfffff80077c17100;
+CONST INT _fltused = 0;
 
 VOID driverUnload(PDRIVER_OBJECT driverObject)
 {
-	UNREFERENCED_PARAMETER(driverObject);
-	return;
+    UNREFERENCED_PARAMETER(driverObject);
+    DbgPrint("Driver Unload");
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
 {
-	UNREFERENCED_PARAMETER(reg_path);
-	driverObject->DriverUnload = driverUnload;
-    ULONG64 cr3 = getCR3SaferByPID(0x3384);
-    UCHAR x[8] = { 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC };
-    writePhysicalMemory(getPhysicalAddressByCR3AndVirtualAddress(cr3, 0x7FFC5843D1B8), x, 8);
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+
+    UNICODE_STRING dllFullPath = RTL_CONSTANT_STRING(L"D:\\testDLL.dll");
+    dllInjectionByRemoteThread((PUCHAR)"League of Legends.exe", &dllFullPath);
     return STATUS_SUCCESS;
 }
