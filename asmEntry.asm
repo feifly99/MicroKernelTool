@@ -1,5 +1,69 @@
 .code
 
+	__asm__writeDR0 PROC
+		mov dr0, rcx
+		ret
+	__asm__writeDR0 ENDP
+
+	__asm__writeDR1 PROC
+		mov dr1, rcx
+		ret
+	__asm__writeDR1 ENDP
+
+	__asm__writeDR2 PROC
+		mov dr2, rcx
+		ret
+	__asm__writeDR2 ENDP
+
+	__asm__writeDR3 PROC
+		mov dr3, rcx
+		ret
+	__asm__writeDR3 ENDP
+
+	__asm__writeDR6 PROC
+		mov dr6, rcx
+		ret
+	__asm__writeDR6 ENDP
+
+	__asm__writeDR7 PROC
+		mov dr7, rcx
+		ret
+	__asm__writeDR7 ENDP
+
+	__asm__checkSegmentRegistor PROC
+		mov eax, es
+		mov dword ptr [rcx], eax
+		mov eax, cs
+		mov dword ptr [rcx + 4], eax
+		mov eax, ss
+		mov dword ptr [rcx + 8], eax
+		mov eax, ds
+		mov dword ptr [rcx + 12], eax
+		mov eax, fs
+		mov dword ptr [rcx + 16], eax
+		mov eax, gs
+		mov dword ptr [rcx + 20], eax
+		mov rax, cr8
+		mov qword ptr [rcx + 24], rax
+		mov eax, 0FFFFEEEEh
+		ret
+	__asm__checkSegmentRegistor ENDP
+
+	__asm__checkRFLAGS PROC
+		pushfq
+		pop rax
+		ret
+	__asm__checkRFLAGS ENDP
+
+	__asm__clearDRx PROC
+		xor rax, rax
+		mov dr0, rax
+		mov dr1, rax
+		mov dr2, rax
+		mov dr3, rax
+		ret
+	__asm__clearDRx ENDP
+
 	__asm__getIDT PROC
 		sidt qword ptr [rcx]
 		ret
@@ -193,7 +257,7 @@
 		ret
 	__asm__getImagePathNameAddress ENDP
 	
-	__asm__readMSR PROC ;ULONG64 __asm__readMSR(IN ULONG64* regArrayAddress, OUT ULONG64 msrAddress)
+	__asm__readMSR PROC ;ULONG64 __asm__readMSR(IN ULONG64 msrAddress)
 		rdmsr
 		shl rdx, 20h
 		add rax, rdx
@@ -274,5 +338,12 @@
 		pop r15
 		ret
 	__asm__getFuncAddressByIndex_Via_DllBase ENDP
+
+	__asm__makeUC PROC; __asm__makeUC(USHORT Length, USHORT MaximumLength, PVOID buffer, PVOID ucInput)
+		mov word ptr [r9], cx
+		mov word ptr [r9 + 2], dx
+		mov qword ptr [r9 + 8], r8
+		ret
+	__asm__makeUC ENDP
 
 END
