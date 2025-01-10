@@ -57,7 +57,6 @@ VOID displayKernelModules(
 VOID displayAllThreadInfomationByProcessId(
     IN ULONG64 pid
 );
-
 ULONG64 getPIDByProcessName(
     IN PUCHAR name
 );
@@ -74,6 +73,10 @@ ULONG64 getDllExportFunctionAddressByName(
     IN PVOID dllBaseInLoad,
     IN PUCHAR funcName
 );
+VOID dllInjectionByRemoteThread(
+    PUCHAR processNameWannaInjectTo,
+    PUNICODE_STRING dllFullPath
+);
 UCHAR readByte(
     IN HANDLE pid,
     IN PVOID address
@@ -84,15 +87,16 @@ VOID writeProcessMemory(
     IN PVOID pointerToContent,
     IN SIZE_T size
 );
-
 VOID hideThisDriver(
     IN PDRIVER_OBJECT driverObject
 );
 VOID restoreThisDriver(
     IN PDRIVER_OBJECT driverObject
 );
-
 VOID readImagePathNameAndCommandLine(
     IN HANDLE pid
+);
+ULONG_PTR getIdtEntry(
+    VOID
 );
 #endif
