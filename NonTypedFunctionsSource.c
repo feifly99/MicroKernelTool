@@ -589,9 +589,9 @@ VOID dllInjectionByRemoteThread(
     waitTime.QuadPart = -10000 * 2000;
     KeDelayExecutionThread(KernelMode, TRUE, &waitTime);
 
-    /*SIZE_T freeSizeNeededMustForReleaseType = 0x0;
+    SIZE_T freeSizeNeededMustForReleaseType = 0x0;
     ZwFreeVirtualMemory(processHandle, &machineCodeUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);
-    ZwFreeVirtualMemory(processHandle, &unicodeStringUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);*/
+    ZwFreeVirtualMemory(processHandle, &unicodeStringUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);
     
     ZwClose(threadHandle);
     ZwClose(processHandle);
