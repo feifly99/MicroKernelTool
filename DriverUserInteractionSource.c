@@ -6,14 +6,10 @@
 
 __INIT_GLOBAL__DEFINES__;
 static CLIENT_ID g_cid = { 0 };
-static OBJECT_ATTRIBUTES g_kernelProcessObjAttributes = { 0 };
-static HANDLE g_kernelProcess = NULL;
 __INIT_GLOBAL__DEFINES__;
 
 __PROCESS_MEMORY_SPACE_DEFINES__;
 static PVAL g_headVAL = NULL;
-static MEMORY_INFORMATION_CLASS g_MIC = MemoryBasicInformation;
-static MEMORY_BASIC_INFORMATION g_mbi = { 0 };
 __PROCESS_MEMORY_SPACE_DEFINES__;
 
 __SEARCH_OUTCOME_DEFINES__;
@@ -37,6 +33,7 @@ NTSTATUS myCreate(
     UNREFERENCED_PARAMETER(pDeviceObject);
     NTSTATUS status = STATUS_SUCCESS;
     DbgPrint("Routine: MyCreate successful!\n");
+    log(最新.);
     pIrp->IoStatus.Status = STATUS_SUCCESS;
     pIrp->IoStatus.Information = 0;
     IoCompleteRequest(pIrp, IO_NO_INCREMENT);
@@ -65,187 +62,322 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
     UNREFERENCED_PARAMETER(devObj);
     PIO_STACK_LOCATION irpSL = IoGetCurrentIrpStackLocation(pIrp);
+    irpSL->Parameters.Read.Length;
     ULONG controlCode = irpSL->Parameters.DeviceIoControl.IoControlCode;
+    NTSTATUS retSt = STATUS_SUCCESS;
     __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
-    if (controlCode == ____$_INITIZE_PROCESS_HANDLE_$____)
+    switch (controlCode)
     {
-        ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer; //由用户层输入：&ULONG64.
-        g_cid.UniqueProcess = (HANDLE)pid;
-        g_cid.UniqueThread = NULL;
-        InitializeObjectAttributes(&g_kernelProcessObjAttributes, NULL, 0, NULL, NULL);
-        if (NT_SUCCESS(ZwOpenProcess(&g_kernelProcess, GENERIC_ALL, &g_kernelProcessObjAttributes, &g_cid)))
+        case ____$_INITIZE_PROCESS_ID_$____:
         {
-            DbgPrint("Driver Initialization Successfully");
-            IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-            return STATUS_SUCCESS;
-        }
-        else
-        {
-            DbgPrint("Open File Failed!");
-            IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
-            return STATUS_UNSUCCESSFUL;
-        }
-    }
-    else if (controlCode == ____$_INITIALIZE_PROCESS_MEMORY_SPACE_$____)
-    {
-        buildValidAddressSingleList(
-            &g_kernelProcess,
-            &g_MIC,
-            &g_mbi,
-            &g_headVAL,
-            0x00007FFF00000000
-        );
-        getRegionGapAndPages(g_headVAL);
-        if (g_headVAL != NULL)
-        {
-            DbgPrint("Process Memory Loading Successfully");
-            IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-            return STATUS_SUCCESS;
-        }
-        else
-        {
-            DbgPrint("Process Memory Loading Failed! Please Stop and Unloading Driver");
-            IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
-            return STATUS_UNSUCCESSFUL;
-        }
-    }
-    else if (controlCode == ____$_SEARCH_PROCEDURE_$____)
-    {
-        PD_U_SMI temp = (PD_U_SMI)pIrp->AssociatedIrp.SystemBuffer;
-        PD_U_SMI res = (PD_U_SMI)ExAllocatePoolWithTag(PagedPool, sizeof(D_U_SMI), 'zppz');
-        res->isFirstScan = temp->isFirstScan;
-        res->dataType = temp->dataType;
-        res->scanMode = temp->scanMode;
-        if(temp->smi != NULL)
-        {
-            res->smi = (PSMI)ExAllocatePoolWithTag(PagedPool, sizeof(SMI), 'zuuz');
-            res->smi->preciseMode.dataLen = temp->smi->preciseMode.dataLen;
-            res->smi->preciseMode.value_hexBytePointer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, res->smi->preciseMode.dataLen, 'zggz');
-            memcpy(res->smi->preciseMode.value_hexBytePointer, temp->smi->preciseMode.value_hexBytePointer, res->smi->preciseMode.dataLen);
-            DbgPrint("%llu", res->smi->preciseMode.dataLen);
-        }
-        if (res->isFirstScan == 1)
-        {
-            buildDoubleLinkedAddressListForScaningResult(
-                (ULONG64)g_cid.UniqueProcess,
-                res->scanMode,
-                res->smi,
-                res->dataType,
-                g_headVAL,
-                &g_headRSL
-            );
-            printListRSL(g_headRSL);
-        }
-        else
-        {
-            continueSearch(
-                (ULONG64)g_cid.UniqueProcess,
-                res->scanMode,
-                res->dataType,
-                res->smi,
-                &g_headRSL
-            );
-        }
-        IOCTL_COMPLETE_MARK(STATUS_UNSUCCESSFUL, 0);
-        return STATUS_UNSUCCESSFUL;
-    }
-    else if (controlCode == ____$_STOP_SEARCH_PATTERN_$____)
-    {
-        if (g_headRSL != NULL)
-        {
-            ExFreeResultSavedLink(&g_headRSL);
-            g_headRSL = NULL;
-        }
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else if (controlCode == ____$_LIST_PROCESS_MODULE_$____)
-    {
-        displayAllModuleInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else if (controlCode == ____$_LIST_PROCESS_THREAD_$____)
-    {
-        displayAllThreadInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else if (controlCode == ____$_WRITE_PROCESS_MEMORY_$____)
-    {
-        PWPMI inputBuffer = (PWPMI)pIrp->AssociatedIrp.SystemBuffer;
-        if (inputBuffer)
-        {
-            PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(PagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'wwww');
-            for (SIZE_T j = 0; j < inputBuffer->writeMemoryLength && tempBuffer; j++)
+            ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer;
+            g_cid.UniqueProcess = (HANDLE)pid;
+            g_cid.UniqueThread = NULL;
+            if (g_cid.UniqueProcess)
             {
-                tempBuffer[j] = *(UCHAR*)((ULONG64)(inputBuffer->writeBuffer) + j);
+                log(进程ID保存成功.);
             }
-            writeProcessMemory((ULONG64)g_cid.UniqueProcess, inputBuffer->writeBeginAddress, (PVOID)tempBuffer, inputBuffer->writeMemoryLength);
-            ExFreePool(tempBuffer);
-            IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-            return STATUS_SUCCESS;
+            else
+            {
+                log(进程ID保存失败！);
+            }
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
         }
-        else
+        case ____$_INITIALIZE_PROCESS_MEMORY_SPACE_$____:
         {
-            DbgPrint("Null input, driver close.");
-            IOCTL_COMPLETE_MARK(STATUS_INVALID_ADDRESS, 0);
-            return STATUS_INVALID_ADDRESS;
+            OBJECT_ATTRIBUTES obja = { 0 };
+            InitializeObjectAttributes(&obja, NULL, 0, NULL, NULL);
+            log(开始初始化进程内存...);
+            buildValidAddressSingleList(
+                (ULONG64)g_cid.UniqueProcess,
+                &g_headVAL,
+                0x00007FFF00000000
+            );
+            getRegionGapAndPages(g_headVAL);
+            if (g_headVAL != NULL)
+            {
+                log(进程内存初始化成功.);
+                IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            }
+            else
+            {
+                log(进程内存初始化失败！);
+                IOCTL_COMPLETE_MARK(retSt, STATUS_UNSUCCESSFUL, 0);
+            }
+            break;
+        }
+        case ____$_SEARCH_PROCEDURE_$____:
+        {
+            //在此case中内核可以借用SystemBuffer来临时访问用户层地址，即DbgPrint("%d", *(INT*)si->u.precise.ptr2Value); 可以成功打印用户层指针的内容.
+            //1.(System)Buffer本地化; 2.地址内核化.
+            PSI si = (PSI)ExAllocatePoolWithTag(NonPagedPool, sizeof(SI), 'z+aa');
+            RtlZeroMemory(si, sizeof(SI));
+            PSI nonStableSi = (PSI)pIrp->AssociatedIrp.SystemBuffer;
+            RtlCopyMemory(si, nonStableSi, sizeof(SI));
+            //用户地址内核化：
+            switch (si->memberType)
+            {
+                case UNION_MEMBER_PRECISE:
+                {
+                    switch (si->valueType)
+                    {
+                        case TYPE_BYTE:
+                        {
+                            UCHAR* x = (UCHAR*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UCHAR), 'z+aa');
+                            RtlZeroMemory(x, sizeof(UCHAR));
+                            RtlCopyMemory(x, si->u.precise.ptr2Value, sizeof(UCHAR));
+                            si->u.precise.ptr2Value = x;
+                            break;
+                        }
+                        case TYPE_WORD:
+                        {
+                            USHORT* x = (USHORT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(USHORT), 'z+aa');
+                            RtlZeroMemory(x, sizeof(USHORT));
+                            RtlCopyMemory(x, si->u.precise.ptr2Value, sizeof(USHORT));
+                            si->u.precise.ptr2Value = x;
+                            break;
+                        }
+                        case TYPE_DWORD:
+                        {
+                            UINT* x = (UINT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UINT), 'z+aa');
+                            RtlZeroMemory(x, sizeof(UINT));
+                            RtlCopyMemory(x, si->u.precise.ptr2Value, sizeof(UINT));
+                            si->u.precise.ptr2Value = x;
+                            break;
+                        }
+                        case TYPE_QWORD:
+                        {
+                            ULONG64* x = (ULONG64*)ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG64), 'z+aa');
+                            RtlZeroMemory(x, sizeof(ULONG64));
+                            RtlCopyMemory(x, si->u.precise.ptr2Value, sizeof(ULONG64));
+                            si->u.precise.ptr2Value = x;
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case UNION_MEMBER_REGION:
+                {
+                    switch (si->valueType)
+                    {
+                        case TYPE_BYTE:
+                        {
+                            UCHAR* l = (UCHAR*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UCHAR), 'z+aa');
+                            RtlZeroMemory(l, sizeof(UCHAR));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(UCHAR));
+                            si->u.region.ptr2LowerBound = l;
+                            UCHAR* h = (UCHAR*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UCHAR), 'z+aa');
+                            RtlZeroMemory(h, sizeof(UCHAR));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(UCHAR));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        case TYPE_WORD:
+                        {
+                            USHORT* l = (USHORT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(USHORT), 'z+aa');
+                            RtlZeroMemory(l, sizeof(USHORT));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(USHORT));
+                            si->u.region.ptr2LowerBound = l;
+                            USHORT* h = (USHORT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(USHORT), 'z+aa');
+                            RtlZeroMemory(h, sizeof(USHORT));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(USHORT));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        case TYPE_DWORD:
+                        {
+                            UINT* l = (UINT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UINT), 'z+aa');
+                            RtlZeroMemory(l, sizeof(UINT));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(UINT));
+                            si->u.region.ptr2LowerBound = l;
+                            UINT* h = (UINT*)ExAllocatePoolWithTag(NonPagedPool, sizeof(UINT), 'z+aa');
+                            RtlZeroMemory(h, sizeof(UINT));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(UINT));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        case TYPE_QWORD:
+                        {
+                            ULONG64* l = (ULONG64*)ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG64), 'z+aa');
+                            RtlZeroMemory(l, sizeof(ULONG64));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(ULONG64));
+                            si->u.region.ptr2LowerBound = l;
+                            ULONG64* h = (ULONG64*)ExAllocatePoolWithTag(NonPagedPool, sizeof(ULONG64), 'z+aa');
+                            RtlZeroMemory(h, sizeof(ULONG64));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(ULONG64));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        case TYPE_FLOAT:
+                        {
+                            float* l = (float*)ExAllocatePoolWithTag(NonPagedPool, sizeof(float), 'z+aa');
+                            RtlZeroMemory(l, sizeof(float));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(float));
+                            si->u.region.ptr2LowerBound = l;
+                            float* h = (float*)ExAllocatePoolWithTag(NonPagedPool, sizeof(float), 'z+aa');
+                            RtlZeroMemory(h, sizeof(float));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(float));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        case TYPE_DOUBLE:
+                        {
+                            double* l = (double*)ExAllocatePoolWithTag(NonPagedPool, sizeof(double), 'z+aa');
+                            RtlZeroMemory(l, sizeof(double));
+                            RtlCopyMemory(l, si->u.region.ptr2LowerBound, sizeof(double));
+                            si->u.region.ptr2LowerBound = l;
+                            double* h = (double*)ExAllocatePoolWithTag(NonPagedPool, sizeof(double), 'z+aa');
+                            RtlZeroMemory(h, sizeof(double));
+                            RtlCopyMemory(h, si->u.region.ptr2HigherBound, sizeof(double));
+                            si->u.region.ptr2HigherBound = h;
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case UNION_MEMBER_PATTERN:
+                {
+                    switch (si->valueType)
+                    {
+                        case TYPE_PATTERN:
+                        {
+                            //【危险】在驱动程序中万万不可用%s输出此字符串,因为只截取了用户模式串在\0之前的部分！！！！！！
+                            //【危险】必须用strncmp/循环 + %c + 长度等方式保守控制输出！！！
+                            UCHAR* p = (UCHAR*)ExAllocatePoolWithTag(NonPagedPool, si->u.pattern.patternLen, 'z+aa');
+                            RtlZeroMemory(p, si->u.pattern.patternLen);
+                            RtlCopyMemory(p, si->u.pattern.ptr2Pattern, si->u.pattern.patternLen);
+                            si->u.pattern.ptr2Pattern = p;
+                            break;
+                        }
+                        default:
+                        {
+                            break;
+                        }
+                    }
+                    break;
+                }
+                default:
+                {
+                    break;
+                }
+            }
+            checkSI(si);
+            searchTargetBySearchInfo(si, (ULONG64)g_cid.UniqueProcess, g_headVAL, &g_headRSL);
+            log(已经走完！正在等待！);
+            kernelSleep(2500);
+            //往下出问题了！主核心没问题！
+            if (g_headRSL != NULL)
+            {
+                printListRSL((ULONG64)g_cid.UniqueProcess, &g_headRSL);
+            }
+            else
+            {
+                log(没东西！);
+            }
+            freeSI(&si);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_STOP_SEARCH_PROCEDURE_$____:
+        {
+            if (g_headRSL != NULL)
+            {
+                ExFreeResultSavedLink(&g_headRSL);
+                g_headRSL = NULL;
+            }
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_LIST_PROCESS_MODULE_$____:
+        {
+            displayAllModuleInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_LIST_PROCESS_THREAD_$____:
+        {
+            displayAllThreadInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_WRITE_PROCESS_MEMORY_$____:
+        {
+            PWPMI inputBuffer = (PWPMI)pIrp->AssociatedIrp.SystemBuffer;
+            if (inputBuffer)
+            {
+                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'z+aa');
+                for (SIZE_T j = 0; j < inputBuffer->writeMemoryLength && tempBuffer; j++)
+                {
+                    tempBuffer[j] = *(UCHAR*)((ULONG64)(inputBuffer->writeBuffer) + j);
+                }
+                writeProcessMemory((ULONG64)g_cid.UniqueProcess, inputBuffer->writeBeginAddress, (PVOID)tempBuffer, inputBuffer->writeMemoryLength);
+                ExFreePool(tempBuffer);
+                IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            }
+            else
+            {
+                log(空指针输入！);
+                IOCTL_COMPLETE_MARK(retSt, STATUS_INVALID_ADDRESS, 0);
+            }
+            break;
+        }
+        case ____$_PROCESS_HIDEN_PROCEDURE_$____:
+        {
+            ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer;
+            processHiddenProcedure(pid, &g_headHPL);
+            printListHPL(g_headHPL);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_PROCESS_PRETENT_PROCEDURE_$____:
+        {
+            PPPI inputBuffer = (PPPI)pIrp->AssociatedIrp.SystemBuffer;
+            processPretentProcedure(inputBuffer->ditryPID, inputBuffer->parasitePID, &g_headPPL);
+            printListPPL(g_headPPL);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_UNLOAD_DRIVER_PREPARE_$____:
+        {
+            if (g_headVAL != NULL)
+            {
+                ExFreeValidAddressLink(&g_headVAL);
+                g_headVAL = NULL;
+            }
+            if (g_headRSL != NULL)
+            {
+                ExFreeResultSavedLink(&g_headRSL);
+                g_headRSL = NULL;
+            }
+            if (g_headHPL != NULL)
+            {
+                ExFreeHiddenProcessLink(&g_headHPL);
+                g_headHPL = NULL;
+            }
+            if (g_headPPL != NULL)
+            {
+                ExFreePretentProcessLink(&g_headPPL);
+                g_headPPL = NULL;
+            }
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        default:
+        {
+            IOCTL_COMPLETE_MARK(retSt, STATUS_INVALID_LABEL, 0);
+            break;
         }
     }
-    else if (controlCode == ____$_PROCESS_HIDEN_PROCEDURE_$____)
-    {
-        ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer;
-        processHiddenProcedure(pid, &g_headHPL);
-        printListHPL(g_headHPL);
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else if (controlCode == ____$_PROCESS_PRETENT_PROCEDURE_$____)
-    {
-        PPPI inputBuffer = (PPPI)pIrp->AssociatedIrp.SystemBuffer;
-        processPretentProcedure(inputBuffer->ditryPID, inputBuffer->parasitePID, &g_headPPL);
-        printListPPL(g_headPPL);
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else if (controlCode == ____$_UNLOAD_DRIVER_PREPARE_$____)
-    {
-        //KeBugCheckEx(0X9ABCDEF0, 0, 0, 0, 0);
-        DbgPrint("here!");
-        if (g_headVAL != NULL)
-        {
-            ExFreeValidAddressLink(&g_headVAL);
-            g_headVAL = NULL;
-        }
-        if (g_headRSL != NULL)
-        {
-            ExFreeResultSavedLink(&g_headRSL);
-            g_headRSL = NULL;
-        }
-        if (g_headHPL != NULL)
-        {
-            ExFreeHiddenProcessLink(&g_headHPL);
-            g_headHPL = NULL;
-        }
-        if (g_headPPL != NULL)
-        {
-            ExFreePretentProcessLink(&g_headPPL);
-            g_headPPL = NULL;
-        }
-        if (g_kernelProcess != NULL)
-        {
-            ZwClose(g_kernelProcess);
-            g_kernelProcess = NULL;
-        }
-        IOCTL_COMPLETE_MARK(STATUS_SUCCESS, 0);
-        return STATUS_SUCCESS;
-    }
-    else
-    {
-        IOCTL_COMPLETE_MARK(STATUS_INVALID_LABEL, 0);
-        return STATUS_INVALID_LABEL;
-    }
+    return retSt;
 }
 ULONG checkProtectAttributesForTargetAddress(
     PVAL headVAL,
