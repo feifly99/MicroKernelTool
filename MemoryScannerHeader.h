@@ -3,172 +3,119 @@
 
 #include "DriverBaseHeader.h"
 
-#define __FIRST_PRECISE_SCAN__ 0x80
-#define __FIRST_FUZZY_SCAN__ 0x90
+typedef enum _valueType
+{
+    TYPE_BYTE           = 0xA1,
+    TYPE_WORD           = 0xA2,
+    TYPE_DWORD          = 0xA3,
+    TYPE_QWORD          = 0xA4,
+    TYPE_PATTERN        = 0xA5,
+    TYPE_FLOAT          = 0xA6,
+    TYPE_DOUBLE         = 0xA7,
+    TYPE_NOT_FLOATING   = 0xA8
+}VALUE_TYPE;
 
-#define __MODE_JUDGE_PRECISE__ 0x10
-#define __MODE_JUDGE_FUZZY__ 0x18
-#define __MODE_JUDGE_PATTERN__ 0x20
+typedef enum _scanType
+{
+    FIRST_PRECISE_SCAN = 0x30, //need new input
+    FIRST_REGION_SCAN = 0x40, //need new input
+    FIRST_PATTERN_SCAN = 0xFF, //need new input
+    CONTINUE_PRECISE = 0x30C0, //need new input
+    CONTINUE_REGION = 0x40C0, //need new input
+    CONTINUE_PATTERN = 0xFFC0, //need new input
+    CONTINUE_LARGER = 0x50C0,
+    CONTINUE_LOWER = 0x60C0,
+    CONTINUE_UNCHANGED = 0x70C0,
+    CONTINUE_INCREASED_BY = 0x80C0,
+    CONTINUE_DECREASED_BY = 0x90C0,
+}SCAN_TYPE;
 
-#define __TYPE_BYTE__ 0xA1
-#define __TYPE_WORD__ 0xA2
-#define __TYPE_DWORD__ 0xA3
-#define __TYPE_QWORD__ 0xA4
-#define __TYPE_PATTERN__ 0xA5
-#define __TYPE_FLOAT__ 0xA6
-#define __TYPE_DOUBLE__ 0xA7
-#define __TYPE_NOT_FLOATING__ 0xA8
+typedef enum _UnionMemberType
+{
+    //标记枚举类型实际选取的结构.
+    //三个枚举值对应三个结构，其目的在于方便地内核化用户层指针.
+    UNION_MEMBER_PRECISE = 1,
+    UNION_MEMBER_REGION = 2,
+    UNION_MEMBER_PATTERN = 3
+}UNION_MEMBER_TYPE;
 
-#define __Continue_PRECISE__ 0xC1
-#define __Continue_LARGER__ 0xC2
-#define __Continue_LOWER__ 0xC3
-#define __Continue_UNCHANGED__ 0xC4
-#define __Continue_REGION__ 0xC5
-
-typedef UCHAR DATA_TYPE;
+typedef enum _largerLowerEqualType
+{
+    COMPARE_LARGER = 1,
+    COMPARE_LOWER = 2,
+    COMPARE_UNCHANGED = 3
+}LLE_JUDGE;
 
 typedef struct _ValidAddressList
 {
-    ULONG64 beginAddress;
-    ULONG64 endAddress;
+    ULONG_PTR beginAddress;
+    ULONG_PTR endAddress;
     ULONG memoryState;
     ULONG memoryProtectAttributes;
     BOOLEAN executeFlag;
-    ULONG64 regionGap;
-    ULONG64 pageNums;
+    SIZE_T regionGap;
+    SIZE_T pageNums;
     SINGLE_LIST_ENTRY ValidAddressEntry;
 }VAL, * PVAL;
 
 typedef struct _ResultSavedList
 {
     ULONG times;
-    ULONG64 address;
-    ULONG64 rslAddressBufferLen;
-    ULONG64 thisNodeAddressPageMaxValidAddress;
+    ULONG_PTR targetAddress;
+    SIZE_T targetAddressBufferLen;
+    ULONG_PTR thisNodePageBeginAddress;
+    ULONG_PTR thisNodePageEndAddres;
+    ULONG protect;
     PUCHAR buffer;
     LIST_ENTRY ResultAddressEntry;
 }RSL, * PRSL, ** PPRSL;
 
-typedef union _SearchModeInput
+typedef struct _SearchInfo
 {
-    struct _preciseMode
+    ULONG isFirstScan;
+    VALUE_TYPE valueType;
+    SCAN_TYPE scanType;
+    UNION_MEMBER_TYPE memberType;
+    union
     {
-        PUCHAR value_hexBytePointer;
-        SIZE_T dataLen;
-    }preciseMode;
+        struct _precise
+        {
+            PVOID ptr2Value;
+            SIZE_T valueLen;
+        }precise;
+        struct _region
+        {
+            PVOID ptr2HigherBound;
+            PVOID ptr2LowerBound;
+            SIZE_T valueLen;
+        }region;
+        struct _pattern
+        {
+            PUCHAR ptr2Pattern;
+            SIZE_T patternLen;
+        }pattern;
+    }u;
+}SI, * PSI;
 
-    struct _fuzzyMode
-    {
-        PUCHAR lowLimit_hexBytePointer;
-        PUCHAR highLimit_hexBytePointer;
-        SIZE_T dataLen;
-    }fuzzyMode;
-
-    struct _patternMode
-    {
-        PUCHAR pattern;
-        SIZE_T patternLen;
-    }patternMode;
-
-    UCHAR modeJudge;
-
-}SMI, * PSMI;
-
-float mabs_float(
-    float x
-);
-
-double mabs_double(
-    double x
-);
-
-// Valid AddressLink
-PVAL createValidAddressNode(
-    IN ULONG64 begin,
-    IN ULONG64 end,
-    IN ULONG memState,
-    IN ULONG memProtectAttributes,
-    IN BOOLEAN executeFlag
-);
 VOID getRegionGapAndPages(
-    //此函数补全VAL结构的regionGap和pageNums成员
     IN_OUT PVAL headVAL
 );
 VOID buildValidAddressSingleList(
-    //此函数补全VAL结构的SINGLE_LIST_ENTRY成员
-    IN PHANDLE phProcess,
-    IN PMEMORY_INFORMATION_CLASS pMIC,
-    IN PMEMORY_BASIC_INFORMATION pmbi,
+    IN ULONG64 pid,
     OUT PVAL* headVAL,
-    IN ULONG64 addressMaxLimit
-);
-
-// ResultSavedLink:
-PRSL createResultSavedNode(
-    IN ULONG times,
-    IN ULONG64 address,
-    IN ULONG64 addressBufferLen,
-    IN PVAL headVAL
-);
-VOID initializePreciseSearchModeInput(
-    OUT PSMI* smi,
-    IN SIZE_T valueLen,
-    IN PVOID pointerToIntegerValue
-);
-VOID initializeFuzzySearchModeInput(
-    OUT PSMI* smi,
-    IN SIZE_T valueLen,
-    IN PVOID pointerToLowerValue,
-    IN PVOID pointerToHigherValue
-);
-VOID initializePatternMatchTypeSearchModeInput(
-    OUT PSMI* smi,
-    IN PUCHAR pattern,
-    IN SIZE_T patternLen
-);
-//KMP Algorithm
-VOID KMP_computeLPSArray(
-    CONST PUCHAR pattern,
-    SIZE_T patLen,
-    LONG* lps
-);
-VOID KMP_searchPattern(
-    IN CONST PUCHAR des,
-    IN CONST PUCHAR pattern,
-    IN SIZE_T desLen,
-    IN SIZE_T patLen,
-    IN ULONG64 pageBeginAddress,
-    IN PVAL headVAL,
-    OUT ULONG64* addressWannaFreed,
-    OUT PRSL* headRSL
-);
-VOID FUZZY_searchRegion(
-    IN CONST PUCHAR des,
-    IN SIZE_T desLen,
-    IN UCHAR dataType, //[0]: 1b [1]: 2b [2]: 4b [3]: 8b [4]: float [5]: double
-    IN PUCHAR lowHexPointer,
-    IN PUCHAR highHexPointer,
-    IN ULONG64 pageBeginAddress,
-    IN PVAL headVAL,
-    OUT PRSL* headRSL
-);
-VOID buildDoubleLinkedAddressListForScaningResult( //APC attach inline
+    IN ULONG_PTR addressMaxLimit
+); 
+VOID searchTargetBySearchInfo(
+    IN PSI si,
     IN ULONG64 pid,
-    IN UCHAR firstSearchMode, //[0]: precise search [1]: fuzzy search
-    IN PSMI smi,
-    IN UCHAR dataType,
     IN PVAL headVAL,
     OUT PRSL* headRSL
 );
-VOID continueSearch(
-    IN ULONG64 pid,
-    IN UCHAR continueSearchType,
-    IN UCHAR dataType,
-    IN PSMI searchInput,
-    IN_OUT PRSL* headRSL
-);//如果第四个参数是【PRSL headRSL】输入就会出现泄露：只要是变化的值，永远传指针。
-VOID checkSMI(
-    IN PSMI smi
+VOID checkSI(
+    IN PSI si
+);
+VOID freeSI(
+    IN PSI* si
 );
 BOOLEAN checkAllRSLAddressLenValid(
     IN PRSL headRSL
@@ -177,7 +124,8 @@ VOID printListVAL(
     IN PVAL headVAL
 );
 VOID printListRSL(
-    IN PRSL headRSL
+    IN_OPT ULONG64 pid,
+    IN PRSL* headRSL
 );
 ULONG64 getMaxRegionPages(
     IN PVAL head
