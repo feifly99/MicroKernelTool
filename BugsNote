@@ -1,0 +1,52 @@
+1.dllHANDLE那个，原因：RSP指针必须在CALL之前16字节对齐（x64）；
+2.SWITCH-CASE加括号，禁止试图返回局部变量的地址；
+3.RtlCopyMemory，用户页面随时可能消失，不可信任。读取前需要对页面是否存在进行验证；
+4.池分配器EXALLOCATEPOOL的编译器行为，池分配器.
+5.之前的版本在对DBGVIEW/EVERYTHING这样的小型程序，稳定不蓝屏；
+但是一旦涉及浏览器MSEDGE、游戏LEAGUE OF LEGENDS这种大型内存的APP就偶发不定时蓝屏，极其恼人！
+现在我在COPY之前只要简单地验证一下物理地址是否存在，就可以安稳地继续！
+之前我考虑了很多，比如STACKATTACH是不是不宜频繁使用？
+是不是不宜处理大块逻辑？
+RTLCOPYMEMORY的底层汇编是不是不可相信？
+节点处理是否能合并？
+ISPAGEEXISTING开关变量在为TRUE的时候结尾有没有置为FALSE？
+MEM_COMMIT是否可信？
+等等一系列问题！
+而且作为偶发性BUG，WINDBG也没办法给出详细信息，只知道问题出在RTLCOPYMEMORY上！
+我开始认为是不是COPY的范围不对？
+EXALLOCATEPOOLWITHTAG的行为在4095 4096 4097的内存大小的编译器行为？
+VALIDADDRESS（由ZWQUERYVIRTUALMEMORY的BASEADDRESS赋值）中的BASEADDRESS和ALLOCATEBASE有什么区别？
+ZWOPENPROCESS能否在APC挂靠下使用？
+问题太多太多了，但我也对内存管理有了更为深入的理解！
+__try
+{
+    MmProbeAndLockPages(mdl, UserMode, IoReadAccess);
+    SIZE_T offset = curr->targetAddress & 0xFFFull;
+    PVOID kernelMapped = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority);
+    //通过WINDBG反汇编STRNCMP发现，如果第二次字符串搜索过长，可能会跨越边界（寄存器RDX当INC指令循环多次导致SRC地址超过页边界）导致蓝屏.
+    //比如某个页的最后三个字节是匹配IDA恰好匹配，然而第二次读的是IDAPRO，那么这个页面就可能会因为无法读取过长的地址而触发蓝屏！
+    //而CPU为了存储效率，显然有效的字符串不可能分两半存在跨页内存中，所以也不会导致结果数目变小，不会丢弃有效的字符串！
+    //其他逻辑为什么不用再验证呢？
+    //1.因为第一次搜索的长度固定了下来，以后的搜索长度也都固定了下来！既然第一次搜索合理，那么可以保证起始地址加上长度肯定在一个页内！；
+    //2.由于1的缘故，重复搜索的逻辑【是基于1的结果】，而1的有效地址只要能锁定住页面，那么就肯定不会跨越页面边界！因为第一次合理！
+    //偶发性BUG
+    if (strncmp((CONST CHAR*)((ULONG_PTR)kernelMapped + offset), (CONST CHAR*)si->u.pattern.ptr2Pattern, si->u.pattern.patternLen) != 0)
+    {
+        currListLoc->Flink = currListLoc->Flink->Flink;
+        currListLoc->Flink->Blink = currListLoc;
+        curr->ResultAddressEntry.Flink = NULL;
+        curr->ResultAddressEntry.Blink = NULL;
+        ExFreePool(curr->buffer);
+        curr->buffer = NULL;
+        ExFreePool(curr);
+        curr = NULL;
+    }
+    else
+    {
+        continueUpdateResultSavedBuffer((PVOID)((ULONG_PTR)kernelMapped + offset), &curr);
+        currListLoc = currListLoc->Flink;
+    }
+    MmUnlockPages(mdl);
+}
+首次搜索的难处在于如何处理一个大页面的多个小页面，防止页不在物理存储中；
+继续搜索的难处在于如何保证新输入的参数能够保证在单独的一个页面内（不然跨越两个页面），以及资源的回收与释放！
