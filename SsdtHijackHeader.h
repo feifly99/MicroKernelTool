@@ -3,19 +3,19 @@
 
 #include "DriverBaseHeader.h"
 
-ULONG64 getPointerToSSDT(
+ULONG_PTR getPointerToSSDT(
 );
-ULONG64 getAvaliableExecuteMemoryInSSDT(
+ULONG_PTR getAvaliableExecuteMemoryInSSDT(
 );
-ULONG64 getSSDTFunctionAddressByIndex(
-    IN ULONG64 index
+ULONG_PTR getSSDTFunctionAddressByIndex(
+    IN SIZE_T index
 );
 ULONG hookSSDTProcedure(
-    IN ULONG64 functionIndexInSSDT,
-    IN ULONG64 newHookFunctionAddress
+    IN SIZE_T functionIndexInSSDT,
+    IN ULONG_PTR newHookFunctionAddress
 );
 VOID hookSSDTRestore(
-    IN ULONG64 functionIndexInSSDT,
+    IN SIZE_T functionIndexInSSDT,
     IN ULONG oldRellocationOffset
 );
 
