@@ -5,15 +5,8 @@
 
 #define REG_NUM 20
 
-VOID DbgPrintF(
-    IN float* floatNumPointer,
-    OUT_OPT INT* _integer,
-    OUT_OPT ULONG64* _fraction
-);
-VOID DbgPrintD(
-    IN double* doubleNumPointer,
-    OUT_OPT INT* _integer,
-    OUT_OPT ULONG64* _fraction
+VOID kernelSleep(
+    LONG milisecond
 );
 ULONG64 getCR3SaferByPID(
     IN ULONG64 pid
@@ -24,12 +17,12 @@ NTSTATUS readPhysicalAddress(
     IN SIZE_T readSize,
     IN_OPT SIZE_T* bytesTransferred
 );
-ULONG64 getPhysicalAddressByCR3AndVirtualAddress(
+ULONG_PTR getPhysicalAddressByCR3AndVirtualAddress(
     IN ULONG64 cr3,
-    IN ULONG64 VirtualAddress
+    IN ULONG_PTR VirtualAddress
 );
 VOID writePhysicalMemory(
-    IN ULONG64 physicalAddress,
+    IN ULONG_PTR physicalAddress,
     IN PUCHAR writeBuffer,
     IN SIZE_T writeLenLessThan0x1000
 );
@@ -60,7 +53,7 @@ VOID displayAllThreadInfomationByProcessId(
 ULONG64 getPIDByProcessName(
     IN PUCHAR name
 );
-ULONG64 getDllInLoadAddress(
+ULONG_PTR getDllInLoadAddress(
     IN HANDLE pid,
     IN PUNICODE_STRING dllName
 );
@@ -68,14 +61,18 @@ VOID displayDllExportFunctionTable(
     IN HANDLE pid,
     IN PVOID dllBaseInLoad
 );
-ULONG64 getDllExportFunctionAddressByName(
+ULONG_PTR getDllExportFunctionAddressByName(
     IN HANDLE pid,
     IN PVOID dllBaseInLoad,
     IN PUCHAR funcName
 );
-VOID dllInjectionByRemoteThread(
-    PUCHAR processNameWannaInjectTo,
-    PUNICODE_STRING dllFullPath
+ULONG_PTR getDllExportFunctionAddressByNameKernelMode(
+    IN PVOID dllBaseInLoad,
+    IN PUCHAR funcName
+);
+ULONG_PTR getDllExportFunctionAddressByNameKernelMode(
+    IN PVOID dllBaseInLoad,
+    IN PUCHAR funcName
 );
 UCHAR readByte(
     IN HANDLE pid,
