@@ -93,16 +93,16 @@ VOID checkSI(
 		switch (si->valueType)
 		{
 		case TYPE_BYTE:
-			printf("ÊýÖµ: %hhu, %hhd\n", *(UCHAR*)si->u.precise.ptr2Value, *(CHAR*)si->u.precise.ptr2Value);
+			printf("æ•°å€¼: %hhu, %hhd\n", *(UCHAR*)si->u.precise.ptr2Value, *(CHAR*)si->u.precise.ptr2Value);
 			break;
 		case TYPE_WORD:
-			printf("ÊýÖµ: %hu, %hd\n", *(USHORT*)si->u.precise.ptr2Value, *(SHORT*)si->u.precise.ptr2Value);
+			printf("æ•°å€¼: %hu, %hd\n", *(USHORT*)si->u.precise.ptr2Value, *(SHORT*)si->u.precise.ptr2Value);
 			break;
 		case TYPE_DWORD:
-			printf("ÊýÖµ: %u, %d\n", *(UINT*)si->u.precise.ptr2Value, *(INT*)si->u.precise.ptr2Value);
+			printf("æ•°å€¼: %u, %d\n", *(UINT*)si->u.precise.ptr2Value, *(INT*)si->u.precise.ptr2Value);
 			break;
 		case TYPE_QWORD:
-			printf("ÊýÖµ: %llu, %lld\n", *(ULONG64*)si->u.precise.ptr2Value, *(LONG64*)si->u.precise.ptr2Value);
+			printf("æ•°å€¼: %llu, %lld\n", *(ULONG64*)si->u.precise.ptr2Value, *(LONG64*)si->u.precise.ptr2Value);
 			break;
 		default:
 			break;
@@ -114,28 +114,28 @@ VOID checkSI(
 		switch (si->valueType)
 		{
 		case TYPE_BYTE:
-			printf("Ð¡ÊýÖµ: %hhu, %hhd\n", *(UCHAR*)si->u.region.ptr2LowerBound, *(CHAR*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %hhu, %hhd\n", *(UCHAR*)si->u.region.ptr2HigherBound, *(CHAR*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %hhu, %hhd\n", *(UCHAR*)si->u.region.ptr2LowerBound, *(CHAR*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %hhu, %hhd\n", *(UCHAR*)si->u.region.ptr2HigherBound, *(CHAR*)si->u.region.ptr2HigherBound);
 			break;
 		case TYPE_WORD:
-			printf("Ð¡ÊýÖµ: %hu, %hd\n", *(USHORT*)si->u.region.ptr2LowerBound, *(SHORT*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %hu, %hd\n", *(USHORT*)si->u.region.ptr2HigherBound, *(SHORT*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %hu, %hd\n", *(USHORT*)si->u.region.ptr2LowerBound, *(SHORT*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %hu, %hd\n", *(USHORT*)si->u.region.ptr2HigherBound, *(SHORT*)si->u.region.ptr2HigherBound);
 			break;
 		case TYPE_DWORD:
-			printf("Ð¡ÊýÖµ: %u, %d\n", *(UINT*)si->u.region.ptr2LowerBound, *(INT*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %u, %d\n", *(UINT*)si->u.region.ptr2HigherBound, *(INT*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %u, %d\n", *(UINT*)si->u.region.ptr2LowerBound, *(INT*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %u, %d\n", *(UINT*)si->u.region.ptr2HigherBound, *(INT*)si->u.region.ptr2HigherBound);
 			break;
 		case TYPE_QWORD:
-			printf("Ð¡ÊýÖµ: %llu, %lld\n", *(ULONG64*)si->u.region.ptr2LowerBound, *(LONG64*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %llu, %lld\n", *(ULONG64*)si->u.region.ptr2HigherBound, *(LONG64*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %llu, %lld\n", *(ULONG64*)si->u.region.ptr2LowerBound, *(LONG64*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %llu, %lld\n", *(ULONG64*)si->u.region.ptr2HigherBound, *(LONG64*)si->u.region.ptr2HigherBound);
 			break;
 		case TYPE_FLOAT:
-			printf("Ð¡ÊýÖµ: %f\n", *(float*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %f\n", *(float*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %f\n", *(float*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %f\n", *(float*)si->u.region.ptr2HigherBound);
 			break;
 		case TYPE_DOUBLE:
-			printf("Ð¡ÊýÖµ: %lf\n", *(double*)si->u.region.ptr2LowerBound);
-			printf("´óÊýÖµ: %lf\n", *(double*)si->u.region.ptr2HigherBound);
+			printf("å°æ•°å€¼: %lf\n", *(double*)si->u.region.ptr2LowerBound);
+			printf("å¤§æ•°å€¼: %lf\n", *(double*)si->u.region.ptr2HigherBound);
 			break;
 		default:
 			break;
@@ -148,7 +148,7 @@ VOID checkSI(
 		{
 		case TYPE_PATTERN:
 		{
-			printf("×Ö·û´®:\n");
+			printf("å­—ç¬¦ä¸²:\n");
 			for (size_t j = 0; j < si->u.pattern.patternLen; j++)
 			{
 				printf("%c", ((UCHAR*)si->u.pattern.ptr2Pattern)[j]);
