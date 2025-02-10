@@ -4,100 +4,18 @@ extern ULONG64 getSSDTFunctionAddressByIndex(
     IN ULONG64 index
 );
 
-#pragma warning(disable:6387)
-#pragma warning(disable:4702)
+#pragma warning(disable: 6387)
+#pragma warning(disable: 4702)
+#pragma warning(disable: 6011)
 
-VOID DbgPrintF(
-    IN float* floatNumPointer, 
-    OUT_OPT INT* _integer,
-    OUT_OPT ULONG64* _fraction
-)
+VOID kernelSleep(LONG milisecond)
 {
-    INT integerPart = 0;
-    ULONG64 fractionalPart = 0;
-    UINT f = *(UINT*)floatNumPointer;
-    UINT sign = (f >> 31) & 1;
-    UINT exponent = (f >> 23) & 0xFF;
-    UINT mantissa = f & 0x7FFFFF;
-    INT exp = exponent - 127;
-    float value = (float)0.0;
-    float fractionalValue = (float)0.0;
-    if (exponent == 0)
-    {
-        value = (float)(mantissa) / (1 << 23);
-    }
-    else
-    {
-        value = 1.0f + (float)(mantissa) / (1 << 23);
-    }
-    value = value * (float)(1 << exp);
-    if (sign)
-    {
-        value = -value;
-    }
-    integerPart = (INT)value;
-    if (value < 0)
-    {
-        value = -value;
-    }
-    fractionalValue = value - (float)integerPart;
-    fractionalPart = (ULONG64)(fractionalValue * 100000000);
-    DbgPrint("%d.%llu\n", integerPart, fractionalPart);
-    if (_integer != NULL)
-    {
-        *_integer = integerPart;
-    }
-    if (_fraction != NULL)
-    {
-        *_fraction = fractionalPart;
-    }
-    return;
-}
-VOID DbgPrintD(
-    IN double* doubleNumPointer,
-    OUT_OPT INT* _integer,
-    OUT_OPT ULONG64* _fraction
-)
-{
-    INT integerPart = 0;
-    ULONG64 fractionalPart = 0;
-    UINT64 bitRepresentation = *(UINT64*)doubleNumPointer; 
-    UINT sign = (bitRepresentation >> 63) & 1;
-    UINT exponent = (bitRepresentation >> 52) & 0x7FF;
-    UINT64 mantissa = bitRepresentation & 0xFFFFFFFFFFFFF;
-    int exp = 0;
-    double value = 0.0;
-    double fractionalValue = 0.0;
-    if (exponent == 0)
-    {
-        value = (double)(mantissa) / (1ULL << 52); 
-    }
-    else
-    {
-        value = 1.0 + (double)(mantissa) / (1ULL << 52);
-    }
-    exp = (int)exponent - 1023; 
-    value = value * (double)(1ULL << exp); 
-    if (sign)
-    {
-        value = -value;
-    }
-    integerPart = (INT)value;
-    if (value < 0)
-    {
-        value = -value; 
-    }
-    fractionalValue = value - (double)integerPart;
-    fractionalPart = (ULONG64)(fractionalValue * 100000000);
-    DbgPrint("%d.%llu\n", integerPart, fractionalPart); 
-    if (_integer != NULL)
-    {
-        *_integer = integerPart; 
-    }
-    if (_fraction != NULL)
-    {
-        *_fraction = fractionalPart; 
-    }
+    //输入必须为LONG而不是ULONG.
+    //因为有无符号数互相运算，结果隐式转换为无符号数.
+    //注意Quard成员是LONGLONG而非ULONG64.
+    LARGE_INTEGER t = { 0 };
+    t.QuadPart = -10000 * milisecond;
+    KeDelayExecutionThread(KernelMode, TRUE, &t);
     return;
 }
 ULONG64 getCR3SaferByPID(
@@ -129,46 +47,45 @@ NTSTATUS readPhysicalAddress(
         return MmCopyMemory(receivedBuffer, Read, readSize, MM_COPY_MEMORY_PHYSICAL, bytesTransferred);
     }
 }
-ULONG64 getPhysicalAddressByCR3AndVirtualAddress(
+ULONG_PTR getPhysicalAddressByCR3AndVirtualAddress(
     IN ULONG64 cr3,
-    IN ULONG64 VirtualAddress
+    IN ULONG_PTR VirtualAddress
 )
 {
     cr3 = (cr3 >> 12) << 12;
-    ULONG64 ultimatePhysicalAddress = 0;
-    ULONG64 ultimatePhysicalAddressPageHeader = 0;
-    ULONG64 VPO = (VirtualAddress << 52) >> 52;
-    ULONG64 PFN4 = ((VirtualAddress << 43) >> 43) >> 12;
-    ULONG64 PFN3 = ((VirtualAddress << 34) >> 34) >> 21;
-    ULONG64 PFN2 = ((VirtualAddress << 25) >> 25) >> 30;
-    ULONG64 PFN1 = ((VirtualAddress << 16) >> 16) >> 39;
+    ULONG_PTR ultimatePhysicalAddress = 0;
+    ULONG_PTR ultimatePhysicalAddressPageHeader = 0;
+    ULONG_PTR VPO = (VirtualAddress << 52) >> 52;
+    ULONG_PTR PFN4 = ((VirtualAddress << 43) >> 43) >> 12;
+    ULONG_PTR PFN3 = ((VirtualAddress << 34) >> 34) >> 21;
+    ULONG_PTR PFN2 = ((VirtualAddress << 25) >> 25) >> 30;
+    ULONG_PTR PFN1 = ((VirtualAddress << 16) >> 16) >> 39;
     SIZE_T ret = 0;
-    ULONG64 a = 0, b = 0, c = 0;
-    readPhysicalAddress((PVOID)(cr3 + 8 * PFN1), &a, sizeof(ULONG64), &ret);
+    ULONG_PTR a = 0, b = 0, c = 0;
+    readPhysicalAddress((PVOID)(cr3 + 8 * PFN1), &a, sizeof(ULONG_PTR), &ret);
     if (ret == 0) return 0;
     a = (((a << 24) >> 24) >> 12) << 12;
-    readPhysicalAddress((PVOID)(a + 8 * PFN2), &b, sizeof(ULONG64), &ret);
+    readPhysicalAddress((PVOID)(a + 8 * PFN2), &b, sizeof(ULONG_PTR), &ret);
     if (ret == 0) return 0;
     b = (((b << 24) >> 24) >> 12) << 12;
-    readPhysicalAddress((PVOID)(b + 8 * PFN3), &c, sizeof(ULONG64), &ret);
+    readPhysicalAddress((PVOID)(b + 8 * PFN3), &c, sizeof(ULONG_PTR), &ret);
     if (ret == 0) return 0;
     c = (((c << 24) >> 24) >> 12) << 12;
-    readPhysicalAddress((PVOID)(c + 8 * PFN4), &ultimatePhysicalAddressPageHeader, sizeof(ULONG64), &ret);
+    readPhysicalAddress((PVOID)(c + 8 * PFN4), &ultimatePhysicalAddressPageHeader, sizeof(ULONG_PTR), &ret);
     if (ret == 0) return 0;
     ultimatePhysicalAddressPageHeader = (((ultimatePhysicalAddressPageHeader << 24) >> 24) >> 12) << 12;
     ultimatePhysicalAddress = ultimatePhysicalAddressPageHeader + VPO;
     return ultimatePhysicalAddress;
 }
 VOID writePhysicalMemory(
-    IN ULONG64 physicalAddress,
+    IN ULONG_PTR physicalAddress,
     IN PUCHAR writeBuffer,
     IN SIZE_T writeLenLessThan0x1000
 )
 {
     PHYSICAL_ADDRESS p_address = { 0 };
     p_address.QuadPart = (LONG64)physicalAddress;
-    MEMORY_CACHING_TYPE p_type = MmNonCachedUnordered;
-    PVOID kernelAddressMappedByPhysical = MmMapIoSpace(p_address, 0x1000, p_type);
+    PVOID kernelAddressMappedByPhysical = MmMapIoSpace(p_address, 0x1000, MmNonCachedUnordered);
     CR0breakOperation(memcpy(kernelAddressMappedByPhysical, writeBuffer, writeLenLessThan0x1000););
     MmUnmapIoSpace(kernelAddressMappedByPhysical, 0x1000);
     return;
@@ -177,9 +94,9 @@ VOID displayAllIDTFunctionAddress(
 
 )
 {
-    ULONG64 x = 0;
+    ULONG_PTR x = 0;
     __asm__getIDT(&x);
-    ULONG64 base = (0xFFFFULL << 48) + (x >> 16);
+    ULONG_PTR base = (0xFFFFULL << 48) + (x >> 16);
     ULONG64 frac1 = 0;
     ULONG64 frac2 = 0;
     for (SIZE_T j = 0; j < 0xFF; j++)
@@ -262,16 +179,16 @@ VOID displayAllModuleInfomationByProcessId(
     PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KAPC_STATE apc = { 0 };
     KeStackAttachProcess(pe, &apc);
-    ULONG64 pebAddress = (ULONG64)pe + 0x550;
-    ULONG64 peb = *(ULONG64*)pebAddress;
-    ULONG64 pldAddress = peb + 0x18;
-    ULONG64 pld = *(ULONG64*)pldAddress;
-    ULONG64 InLoadOrderModuleListAddress = (ULONG64)pld + 0x10;
+    ULONG_PTR pebAddress = (ULONG_PTR)pe + 0x550;
+    ULONG_PTR peb = *(ULONG_PTR*)pebAddress;
+    ULONG_PTR pldAddress = peb + 0x18;
+    ULONG_PTR pld = *(ULONG_PTR*)pldAddress;
+    ULONG_PTR InLoadOrderModuleListAddress = (ULONG_PTR)pld + 0x10;
     PLIST_ENTRY initialEntryAddress = (PLIST_ENTRY)InLoadOrderModuleListAddress;
     PLIST_ENTRY temp = initialEntryAddress;
-    while ((UL64)temp != (ULONG64)initialEntryAddress->Blink)
+    while ((ULONG_PTR)temp != (ULONG_PTR)initialEntryAddress->Blink)
     {
-        DbgPrint("DllBase: %p \t DllName: %wZ", *(HANDLE*)((ULONG64)temp->Flink + 0x30), (PUNICODE_STRING)((ULONG64)temp->Flink + 0x58));
+        DbgPrint("DllBase: %p \t DllName: %wZ", *(HANDLE*)((ULONG_PTR)temp->Flink + 0x30), (PUNICODE_STRING)((ULONG_PTR)temp->Flink + 0x58));
         temp = temp->Flink;
     }
     KeUnstackDetachProcess(&apc);
@@ -283,16 +200,16 @@ VOID displayAllThreadInfomationByProcessId(
 )
 {
     PEPROCESS pe = NULL;
-    ULONG64 cidAddress = 0x0;
+    ULONG_PTR cidAddress = 0x0;
     KAPC_STATE apc = { 0 };
     PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KeStackAttachProcess(pe, &apc);
-    ULONG64 initialEntryAddress = (UL64)pe + 0x5E0;
-    PLIST_ENTRY firstThreadListEntryAddress = ((PLIST_ENTRY)((UL64)pe + 0x5E0))->Flink;
-    while ((UL64)firstThreadListEntryAddress != (UL64)(((PLIST_ENTRY)initialEntryAddress)))
+    ULONG_PTR initialEntryAddress = (ULONG_PTR)pe + 0x5E0;
+    PLIST_ENTRY firstThreadListEntryAddress = ((PLIST_ENTRY)((ULONG_PTR)pe + 0x5E0))->Flink;
+    while ((ULONG_PTR)firstThreadListEntryAddress != (ULONG_PTR)(((PLIST_ENTRY)initialEntryAddress)))
     {
-        cidAddress = (UL64)firstThreadListEntryAddress - 0x4E8 + 0x478;
-        DbgPrint("threadID: %p, threadStartAddress: 0x%p", ((PCLIENT_ID)cidAddress)->UniqueThread, *(PVOID*)((UL64)firstThreadListEntryAddress - 0x4E8 + 0x450));
+        cidAddress = (ULONG_PTR)firstThreadListEntryAddress - 0x4E8 + 0x478;
+        DbgPrint("threadID: %p, threadStartAddress: 0x%p", ((PCLIENT_ID)cidAddress)->UniqueThread, *(PVOID*)((ULONG_PTR)firstThreadListEntryAddress - 0x4E8 + 0x450));
         firstThreadListEntryAddress = firstThreadListEntryAddress->Flink;
     }
     KeUnstackDetachProcess(&apc);
@@ -319,46 +236,46 @@ VOID displayKernelModules(
     //    Section->LDR->InLoadOrderLinks [_LIST_ENTRY]，连接的是下一个驱动对象的LDR，也就是Section所指向的结构
     // WholeStruct表示所在域是一个完整的LDR结构。相对应地，NullStruct表示所在域只有一个LIST_ENTRY，没有有效结构，是链表头
     //              最后一个加载的驱动位于双链表的结尾部分，结尾部分的驱动的下一个是链表头，不存储有效信息
-    ULONG64 driverSectionAddress = (ULONG64)driverObject + 0x28;
-    ULONG64 driverSection = *(ULONG64*)driverSectionAddress;
-    ULONG64 driverModuleListHeadAddress = (ULONG64)((PLIST_ENTRY)driverSection)->Flink;
-    ULONG64 temp = (ULONG64)(((PLIST_ENTRY)driverModuleListHeadAddress)->Flink);
+    ULONG_PTR driverSectionAddress = (ULONG_PTR)driverObject + 0x28;
+    ULONG_PTR driverSection = *(ULONG_PTR*)driverSectionAddress;
+    ULONG_PTR driverModuleListHeadAddress = (ULONG_PTR)((PLIST_ENTRY)driverSection)->Flink;
+    ULONG_PTR temp = (ULONG_PTR)(((PLIST_ENTRY)driverModuleListHeadAddress)->Flink);
     while (temp != driverModuleListHeadAddress)
     {
         DbgPrint("ModuleName: %wZ\tModuleBaseAddress: 0x%p\t", (PUNICODE_STRING)(temp + 0x58), *(PVOID*)(temp + 0x30));
-        temp = (ULONG64)(((PLIST_ENTRY)temp)->Flink);
+        temp = (ULONG_PTR)(((PLIST_ENTRY)temp)->Flink);
     }
     //DbgPrint("DriverBaseName: %wZ, DriverDllBase: 0x%p, DriverDllEntryPoint: 0x%p", (PUNICODE_STRING)(temp + 0x48),(PVOID)(temp + 0x30),(PVOID)(temp + 0x38));
-    //一定要加上ULONG64转换，不然就按sizeof(PLIST_ENTRY)寻址去了！以后地址参与运算一律PUCHAR或者ULONG64.
+    //一定要加上ULONG_PTR转换，不然就按sizeof(PLIST_ENTRY)寻址去了！以后地址参与运算一律PUCHAR或者ULONG_PTR.
 }
 
 ULONG64 getPIDByProcessName(
     IN PUCHAR name
 )
 {
-    ULONG64 pe = (ULONG64)IoGetCurrentProcess();
-    ULONG64 head = pe;
-    ULONG64 listEntryOffset = 0x448;
-    ULONG64 uniqueProcessIdOffset = 0x440;
-    ULONG64 imageFileNameOffset = 0x5A8;
+    ULONG_PTR pe = (ULONG_PTR)IoGetCurrentProcess();
+    ULONG_PTR head = pe;
+    ULONG_PTR listEntryOffset = 0x448;
+    ULONG_PTR uniqueProcessIdOffset = 0x440;
+    ULONG_PTR imageFileNameOffset = 0x5A8;
     SIZE_T maxHoldenLength = 15;
-    pe = (ULONG64)(((PLIST_ENTRY)(pe + listEntryOffset))->Flink) - listEntryOffset;
+    pe = (ULONG_PTR)(((PLIST_ENTRY)(pe + listEntryOffset))->Flink) - listEntryOffset;
     while (pe != head)
     {
         if (strncmp((PVOID)(pe + imageFileNameOffset), (PVOID)name, min(strlen((CONST CHAR*)name), maxHoldenLength) - 1) != 0)
         {
-            //imageFileName如果字符个数大于等于15，那么最后一位一定是\0.
+            //imageFileName如果字符个数大于等于15，那么最后一位一定是'\0'.
             //所以比较时，如果输入字符串长度大于等于15，那么要比较前14个字节就行.
-            pe = (ULONG64)(((PLIST_ENTRY)(pe + listEntryOffset))->Flink) - listEntryOffset;
+            pe = (ULONG_PTR)(((PLIST_ENTRY)(pe + listEntryOffset))->Flink) - listEntryOffset;
         }
         else
         {
             break;
         }
     }
-    return *(ULONG64*)(pe + uniqueProcessIdOffset);
+    return *(ULONG_PTR*)(pe + uniqueProcessIdOffset);
 }
-ULONG64 getDllInLoadAddress(
+ULONG_PTR getDllInLoadAddress(
     IN HANDLE pid,
     IN PUNICODE_STRING dllName
 )
@@ -367,19 +284,19 @@ ULONG64 getDllInLoadAddress(
     PsLookupProcessByProcessId((HANDLE)pid, &pe);
     KAPC_STATE apc = { 0 };
     KeStackAttachProcess(pe, &apc);
-    ULONG64 pebAddress = (ULONG64)pe + 0x550;
-    ULONG64 peb = *(ULONG64*)pebAddress;
-    ULONG64 pldAddress = peb + 0x18;
-    ULONG64 pld = *(ULONG64*)pldAddress;
-    ULONG64 InLoadOrderModuleListAddress = (ULONG64)pld + 0x10;
+    ULONG_PTR pebAddress = (ULONG_PTR)pe + 0x550;
+    ULONG_PTR peb = *(ULONG_PTR*)pebAddress;
+    ULONG_PTR pldAddress = peb + 0x18;
+    ULONG_PTR pld = *(ULONG_PTR*)pldAddress;
+    ULONG_PTR InLoadOrderModuleListAddress = (ULONG_PTR)pld + 0x10;
     PLIST_ENTRY initialEntryAddress = (PLIST_ENTRY)InLoadOrderModuleListAddress;
     PLIST_ENTRY temp = initialEntryAddress;
-    ULONG64 ret = 0x0;
-    while ((UL64)temp != (ULONG64)initialEntryAddress->Blink)
+    ULONG_PTR ret = 0x0;
+    while ((UL64)temp != (ULONG_PTR)initialEntryAddress->Blink)
     {
-        if(RtlCompareUnicodeString(dllName, (PUNICODE_STRING)((ULONG64)temp->Flink + 0x58), TRUE) == 0)
+        if(RtlCompareUnicodeString(dllName, (PUNICODE_STRING)((ULONG_PTR)temp->Flink + 0x58), TRUE) == 0)
         {
-            ret =  *(ULONG64*)((ULONG64)temp->Flink + 0x30);
+            ret =  *(ULONG_PTR*)((ULONG_PTR)temp->Flink + 0x30);
             break;
         }
         temp = temp->Flink;
@@ -412,7 +329,7 @@ VOID displayDllExportFunctionTable(
     ObDereferenceObject(pe);
     return;
 }
-ULONG64 getDllExportFunctionAddressByName(
+ULONG_PTR getDllExportFunctionAddressByName(
     IN HANDLE pid,
     IN PVOID dllBaseInLoad,
     IN PUCHAR funcName
@@ -432,7 +349,7 @@ ULONG64 getDllExportFunctionAddressByName(
     }
     for (SIZE_T j = 0; j < sizeNAME; j++)
     {
-        if (strncmp((CONST CHAR*)funcName,(CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j), min(strlen((CONST CHAR*)funcName),strlen((CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j))) - 1) == 0)
+        if (strncmp((CONST CHAR*)funcName, (CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j), min(strlen((CONST CHAR*)funcName), strlen((CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j))) - 1) == 0)
         {
             ret = (ULONG64)__asm__getFuncAddressByIndex_Via_DllBase(dllBaseInLoad, diff, j);
             break;
@@ -442,14 +359,34 @@ ULONG64 getDllExportFunctionAddressByName(
     ObDereferenceObject(pe);
     return ret;
 }
-
+ULONG_PTR getDllExportFunctionAddressByNameKernelMode(
+    IN PVOID dllBaseInLoad,
+    IN PUCHAR funcName
+)
+{
+    SIZE_T sizeTOTAL = __asm__getFuncNumsExportedTotal_Via_DllBase(dllBaseInLoad);
+    SIZE_T sizeNAME = __asm__getFuncNumsExportedByName_Via_DllBase(dllBaseInLoad);
+    SIZE_T diff = 0;
+    ULONG64 ret = 0x0;
+    if (sizeTOTAL >= sizeNAME)
+    {
+        diff = sizeTOTAL - sizeNAME;
+    }
+    for (SIZE_T j = 0; j < sizeNAME; j++)
+    {
+        if (strncmp((CONST CHAR*)funcName, (CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j), min(strlen((CONST CHAR*)funcName), strlen((CONST CHAR*)__asm__getFuncNameByIndex_Via_DllBase(dllBaseInLoad, j))) - 1) == 0)
+        {
+            ret = (ULONG64)__asm__getFuncAddressByIndex_Via_DllBase(dllBaseInLoad, diff, j);
+            break;
+        }
+    }
+    return ret;
+}
 VOID dllInjectionByRemoteThread(
     PUCHAR processNameWannaInjectTo,
     PUNICODE_STRING dllFullPath
 )
 {
-    UNREFERENCED_PARAMETER(dllFullPath);
-
     CONST ULONG64 SYSTEM_PID = 0x4;
 
     ULONG64 pid = getPIDByProcessName(processNameWannaInjectTo);
@@ -458,19 +395,22 @@ VOID dllInjectionByRemoteThread(
         DbgPrint("非法PID，已驳回.");
         return ;
     }
-    ULONG64 stablePid = getPIDByProcessName((PUCHAR)"explorer.exe");
-    if (stablePid == SYSTEM_PID)
-    {
-        DbgPrint("非法常驻PID，已驳回.");
-        return;
-    }
 
     UNICODE_STRING ntdll = RTL_CONSTANT_STRING(L"ntdll.dll");
-    ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)stablePid, (PVOID)getDllInLoadAddress((HANDLE)stablePid, &ntdll), (PUCHAR)"LdrLoadDll");
+    ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)pid, (PVOID)getDllInLoadAddress((HANDLE)pid, &ntdll), (PUCHAR)"LdrLoadDll");
     DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
 
     ULONG_PTR NtCreateThreadEx = (ULONG_PTR)getSSDTFunctionAddressByIndex(0xC2);
     DbgPrint("[NtCreateThreadEx地址: 0x%p]", (PVOID)NtCreateThreadEx);
+
+    ULONG_PTR NtResumeThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x52);
+    DbgPrint("[NtResumeThread地址: 0x%p]", (PVOID)NtResumeThread);
+
+    ULONG_PTR NtSetInfomationThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0xD);
+    DbgPrint("[NtSetInfomationThread地址: 0x%p]", (PVOID)NtSetInfomationThread);
+
+    ULONG_PTR NtQueryInformationThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x25);
+    DbgPrint("[NtQueryInformationThread地址: 0x%p]", (PVOID)NtQueryInformationThread);
 
     HANDLE processHandle = NULL;
     OBJECT_ATTRIBUTES processObja = { 0 };
@@ -486,7 +426,8 @@ VOID dllInjectionByRemoteThread(
 
     PVOID unicodeStringUserMem = NULL;
     SIZE_T unicodeStringSize = 0x1000;
-    ZwAllocateVirtualMemory(processHandle, &unicodeStringUserMem, 0, &unicodeStringSize, MEM_COMMIT, PAGE_READONLY); 
+    //READWRITE的血泪史.
+    ZwAllocateVirtualMemory(processHandle, &unicodeStringUserMem, 0, &unicodeStringSize, MEM_COMMIT, PAGE_READWRITE); 
     ULONG_PTR unicodeStructAddress = ((ULONG_PTR)unicodeStringUserMem + 0x100);
     ULONG_PTR retDllHandleAddress = ((ULONG_PTR)unicodeStringUserMem + 0x300);
     ULONG_PTR retDllHandleInput2LdrLoadDll = ((ULONG_PTR)unicodeStringUserMem + 0x500);
@@ -499,8 +440,8 @@ VOID dllInjectionByRemoteThread(
         0x49, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov r8, <unicodeString>
         0x49, 0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov r9, <dllRetHandle>
         0xFF, 0xD0,                                                 // call rax
-        0x90,                                                       // nop
         0x48, 0x83, 0xC4, 0x48,                                     // add rsp, 48h
+        0x31, 0xC0,                                                 // xor rax, rax
         0xC3                                                        // ret                      
     };
 
@@ -570,7 +511,7 @@ VOID dllInjectionByRemoteThread(
         processHandle,
         (PUSER_THREAD_START_ROUTINE)machineCodeUserMem,
         NULL,
-        0x4, //THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER.
+        0x1, //THREAD_CREATE_FLAGS_SUSPENDED.
         0,
         0,
         0,
@@ -580,14 +521,44 @@ VOID dllInjectionByRemoteThread(
     {
         DbgPrint("成功.");
     }
-    
-    //多线程冲突：用户线程还没执行完，驱动线程就把用户线程执行的机器码FREE了，导致失效。
-    //而从WINDBG和各类调试器来看，逻辑均没问题，位于机器码的第一个字节断点也能命中。
-    //非常难以排查！
-    //内核线程必须等待一会直到用户线程执行完成之后，才能释放用户空间虚拟内存！
-    LARGE_INTEGER waitTime = { 0 };
-    waitTime.QuadPart = -10000 * 2000;
-    KeDelayExecutionThread(KernelMode, TRUE, &waitTime);
+
+    LONG BasePriority = (LONG)LOW_REALTIME_PRIORITY - 1;
+
+    if (BasePriority == 15) 
+    {
+        BasePriority = ((HIGH_PRIORITY + 1) / 2);
+    }
+    if (BasePriority == -15) 
+    {
+        BasePriority = -((HIGH_PRIORITY + 1) / 2);
+    }
+
+    st = ZwSetInformationThread(
+        threadHandle,
+        ThreadBasePriority,
+        &BasePriority,
+        sizeof(BasePriority)
+    );
+    DbgPrint("ZwSetInformationThread %lX", st);
+
+    kernelSleep(2000);
+
+    ((NTSTATUS (*)(
+        HANDLE ThreadHandle,
+        PULONG PreviousSuspendCount
+        ))NtResumeThread)(
+        threadHandle, 
+        NULL
+    );
+
+    LARGE_INTEGER time = { 0 };
+    time.QuadPart = -10000 * 60000;
+    //多线程调试、堆栈分析、汇编代码阅读、断点不命中、双机调试无法复现、未等待线程结束、双
+    //调试器调试（VS+WINDBG）、用户层复现；
+    //先在用户层复现，再在驱动层分析，最后解决。
+    DbgPrint("Wa: %lX", ZwWaitForSingleObject(threadHandle, TRUE, &time));
+
+    kernelSleep(1000);
 
     SIZE_T freeSizeNeededMustForReleaseType = 0x0;
     ZwFreeVirtualMemory(processHandle, &machineCodeUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);
@@ -595,6 +566,99 @@ VOID dllInjectionByRemoteThread(
     
     ZwClose(threadHandle);
     ZwClose(processHandle);
+
+    return;
+}
+VOID dllInjectionBySingleThreadContextRipHijack(
+    IN PUCHAR processNameWannaInjectTo,
+    IN PUNICODE_STRING dllFullPath
+)
+{
+    UNREFERENCED_PARAMETER(dllFullPath);
+
+    NTSTATUS st = STATUS_SUCCESS;
+
+    CONST ULONG64 SYSTEM_PID = 0x4;
+
+    ULONG64 pid = getPIDByProcessName(processNameWannaInjectTo);
+    if (pid == SYSTEM_PID)
+    {
+        DbgPrint("非法PID，已驳回.");
+        return;
+    }
+
+    UNICODE_STRING ntdll = RTL_CONSTANT_STRING(L"ntdll.dll");
+
+    ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)pid, (PVOID)getDllInLoadAddress((HANDLE)pid, &ntdll), (PUCHAR)"LdrLoadDll");
+    DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
+
+    ULONG_PTR NtOpenThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x012F);
+    DbgPrint("[NtOpenThread地址: 0x%p]", (PVOID)NtOpenThread);
+
+    ULONG_PTR NtSuspendThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x01BE);
+    DbgPrint("[NtSuspendThread地址: 0x%p]", (PVOID)NtSuspendThread);
+
+    ULONG_PTR NtGetContextThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x00F3);
+    DbgPrint("[NtGetContextThread地址: 0x%p]", (PVOID)NtGetContextThread);
+    
+    ULONG_PTR NtSetContextThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x018D);
+    DbgPrint("[NtSetContextThread地址: 0x%p]", (PVOID)NtSetContextThread);
+
+    ULONG_PTR NtResumeThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x0052);
+    DbgPrint("[NtResumeThread地址: 0x%p]", (PVOID)NtResumeThread);
+
+
+    ULONG64 oldCR0 = 0x0;
+    PEPROCESS pe = NULL;
+    ULONG64 cidAddress = 0x0;
+    ULONG64 initialEntryAddress = (UL64)pe + 0x5E0;
+    PLIST_ENTRY firstThreadListEntryAddress = ((PLIST_ENTRY)((UL64)pe + 0x5E0))->Flink;
+    SIZE_T count = 4;
+    HANDLE tid = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(pe, &apc);
+    __asm__WRbreak(&oldCR0);
+
+    while ((UL64)firstThreadListEntryAddress != (UL64)(((PLIST_ENTRY)initialEntryAddress)) && count--)
+    {
+        cidAddress = (UL64)firstThreadListEntryAddress - 0x4E8 + 0x478;
+        DbgPrint("threadID: %p, threadStartAddress: 0x%p", ((PCLIENT_ID)cidAddress)->UniqueThread, *(PVOID*)((UL64)firstThreadListEntryAddress - 0x4E8 + 0x450));
+        firstThreadListEntryAddress = firstThreadListEntryAddress->Flink;
+        if (count == 0)
+        {
+            tid = (HANDLE)((PCLIENT_ID)cidAddress)->UniqueThread;
+            break;
+        }
+    }
+
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+
+    //获得指定进程中目标线程的句柄.
+    HANDLE targetThreadHandle = NULL;
+    CLIENT_ID targetCid = { 0 };
+    targetCid.UniqueProcess = (HANDLE)pid;
+    targetCid.UniqueThread = (HANDLE)tid;
+    OBJECT_ATTRIBUTES targetThreadObja = { 0 };
+    InitializeObjectAttributes(&targetThreadObja, NULL, 0, NULL, NULL);
+
+    st = ((NTSTATUS(*)(
+        _Out_ PHANDLE ThreadHandle,
+        _In_ ACCESS_MASK DesiredAccess,
+        _In_ PCOBJECT_ATTRIBUTES ObjectAttributes,
+        _In_opt_ PCLIENT_ID ClientId
+        ))NtOpenThread)(
+        &targetThreadHandle,
+        THREAD_ALL_ACCESS,
+        &targetThreadObja,
+        &targetCid
+    );
+
+    if(targetThreadHandle && NT_SUCCESS(st))
+    {
+        ZwClose(targetThreadHandle);
+    }
 
     return;
 }
@@ -659,8 +723,8 @@ VOID readImagePathNameAndCommandLine(
     PsLookupProcessByProcessId(pid, &pe);
     KAPC_STATE apc = { 0 };
     KeStackAttachProcess(pe, &apc);
-    PVOID ImagePathNameAddress = (PVOID)__asm__getImagePathNameAddress((ULONG64)pe);
-    PVOID CommandLineAddress = (PVOID)((ULONG64)ImagePathNameAddress + 0x10);
+    PVOID ImagePathNameAddress = (PVOID)__asm__getImagePathNameAddress((ULONG_PTR)pe);
+    PVOID CommandLineAddress = (PVOID)((ULONG_PTR)ImagePathNameAddress + 0x10);
     DbgPrint("ImagePathName: %wZ", (PUNICODE_STRING)ImagePathNameAddress);
     DbgPrint("CommandLine: %wZ", (PUNICODE_STRING)CommandLineAddress);
     KeUnstackDetachProcess(&apc);
@@ -671,10 +735,10 @@ ULONG_PTR getIdtEntry(
     VOID
 )
 {
-    ULONG64 idtValue = 0;
+    ULONG_PTR idtValue = 0;
     __asm__getIDT(&idtValue);
-    ULONG64 front48 = (*(ULONG64*)(((0xffffull) << 48) + ((idtValue >> 16)) + 6)) << 16;
+    ULONG_PTR front48 = (*(ULONG_PTR*)(((0xffffull) << 48) + ((idtValue >> 16)) + 6)) << 16;
     USHORT behind16 = *(USHORT*)(((0xffffull) << 48) + ((idtValue >> 16)));
-    ULONG64 retAddressValue = front48 + behind16;
+    ULONG_PTR retAddressValue = front48 + behind16;
     return (ULONG_PTR)retAddressValue;
 }
