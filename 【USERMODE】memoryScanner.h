@@ -43,8 +43,8 @@ typedef enum _scanType
 
 typedef enum _UnionMemberRegion
 {
-    //���ö������ʵ��ѡȡ�Ľṹ.
-    //����ö��ֵ��Ӧ�����ṹ����Ŀ�����ڷ�����ں˻��û���ָ��.
+    //标记枚举类型实际选取的结构.
+    //三个枚举值对应三个结构，其目的在于方便地内核化用户层指针.
     UNION_MEMBER_PRECISE = 1,
     UNION_MEMBER_REGION = 2,
     UNION_MEMBER_PATTERN = 3
