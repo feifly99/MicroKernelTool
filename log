@@ -1,0 +1,541 @@
+/*
+    MDL内存描述符运用
+#include "DriverUserInteractionHeader.h"
+
+#pragma warning(disable: 28182)
+#pragma warning(disable: 6011)
+
+CONST INT _fltused = 0;
+
+VOID driverUnload(PDRIVER_OBJECT driverObject)
+{
+    UNREFERENCED_PARAMETER(driverObject);
+    return;
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+{
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+    ULONG64 pid = getPIDByProcessName((PUCHAR)"abcd.exe");
+    ULONG_PTR userVirtualAddress = 0xC0E3776FFC;
+    PEPROCESS pe = NULL;
+    KAPC_STATE apc = { 0 };
+    PMDL mdl = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KeStackAttachProcess(pe, &apc);
+    //[1].IoAllocateMdl的第二个参数代表从【第一个参数指向的页面横跨的长度，对齐1024字节】
+    //如果在整个区间当中有一个页面不存在，那么就会触发异常走except(1)！
+    //比如第一个页面存在，第二个页面不存在，那么对第一个页面的MmProbeAndLockPages就会失败！
+    //尽管第一个页面缓存在物理内存中也不行！
+    //[2].IoAllocateMdl不会失败，即使userVirtualAddress为0或者不可读内存0x00007FFFFFFFFFFF也能成功，mdl非零！
+    mdl = IoAllocateMdl((PVOID)(userVirtualAddress & ~0xFFFull), PAGE_SIZE, FALSE, FALSE, NULL);
+    __try
+    {
+        MmProbeAndLockPages(mdl, UserMode, IoReadAccess);
+        //这一步如果成功，就证明物理页一定存在，不必再验证物理内存.
+        //目前已经锁定页面，可以安全地访问内存.
+        //由于已经处于APC挂靠模式下，直接访问用户内存就行了，做页面映射也可以。
+        DbgPrint("%hhX", *(UCHAR*)MmGetMdlVirtualAddress(mdl));
+
+        MmUnlockPages(mdl);
+    }
+    __except (1)
+    {
+        DbgPrint("锁定页面失败，探测到不在物理页内的指针！");
+    }
+    IoFreeMdl(mdl);
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+    return STATUS_SUCCESS;
+}
+
+*/
+
+/*
+    驱动级DLL注入
+#include "DriverUserInteractionHeader.h"
+
+#pragma warning(disable: 28182)
+#pragma warning(disable: 6011)
+
+CONST INT _fltused = 0;
+
+ULONG64 g_pid = 0;
+PVOID g_machineCodeUserMem = NULL;
+PVOID g_unicodeStructUserMem = NULL;
+HANDLE g_processHandle = NULL;
+HANDLE g_threadHandle = NULL;
+
+typedef INT (*PUSER_THREAD_START_ROUTINE)(PVOID param);
+
+typedef NTSTATUS (*pNtCreateThreadEx)( //0xC2
+    _Out_ PHANDLE ThreadHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ PCOBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ HANDLE ProcessHandle,
+    _In_ PKSTART_ROUTINE StartRoutine,
+    _In_opt_ PVOID Argument,
+    _In_ ULONG CreateFlags, // THREAD_CREATE_FLAGS_*
+    _In_ SIZE_T ZeroBits,
+    _In_ SIZE_T StackSize,
+    _In_ SIZE_T MaximumStackSize,
+    _In_opt_ PVOID AttributeList
+    );
+
+VOID driverUnload(PDRIVER_OBJECT driverObject)
+{
+    UNREFERENCED_PARAMETER(driverObject);
+    //注意：展示被注入进程所有模块需要“缓一会儿”才能看到注入的DLL存在于列表中.
+    //所以此函数不放在ENTRY中立即执行，而是放在驱动卸载函数中执行.
+    //并且，新注入的DLL并不一定会在原来的DLL列表最底下，可能在中间位置.
+    displayAllModuleInfomationByProcessId(g_pid);
+    SIZE_T freeSizeNeededMustForReleaseType = 0x0; 
+    ZwFreeVirtualMemory(g_processHandle, &g_machineCodeUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);
+    ZwFreeVirtualMemory(g_processHandle, &g_unicodeStructUserMem, &freeSizeNeededMustForReleaseType, MEM_RELEASE);
+    ZwClose(g_processHandle);
+    DbgPrint("Driver Unload");
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+{
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+
+    ULONG64 pid = getPIDByProcessName((PUCHAR)"apx.exe"); g_pid = pid;
+    DbgPrint("[当前进程PID: %llX(%llu)]", pid, pid);
+    if (pid == 4)
+    {
+        DbgPrint("非法PID，已驳回.");
+        return STATUS_UNSUCCESSFUL;
+    }
+    pNtCreateThreadEx NtCreateThreadEx = (pNtCreateThreadEx)getSSDTFunctionAddressByIndex(0xC2);
+    DbgPrint("[NtCreateThreadEx地址: 0x%p]", NtCreateThreadEx);
+
+    ULONG64 stablePid = getPIDByProcessName((PUCHAR)"explorer.exe");
+    if (stablePid == 4)
+    {
+        DbgPrint("非法常驻PID，已驳回.");
+        return STATUS_UNSUCCESSFUL;
+    }
+    UNICODE_STRING dllName = RTL_CONSTANT_STRING(L"ntdll.dll");
+    ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)stablePid, (PVOID)getDllInLoadAddress((HANDLE)stablePid, &dllName), (PUCHAR)"LdrLoadDll");
+    DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
+
+    HANDLE processHandle = NULL;
+    OBJECT_ATTRIBUTES processObja = { 0 };
+    InitializeObjectAttributes(&processObja, NULL, 0, NULL, NULL);
+    CLIENT_ID cidInput = { 0 };
+    cidInput.UniqueProcess = (HANDLE)pid;
+    cidInput.UniqueThread = NULL;
+    NtOpenProcess(&processHandle, PROCESS_ALL_ACCESS, &processObja, &cidInput); g_processHandle = processHandle;
+
+    PVOID machineCodeUserMem = NULL;
+    SIZE_T machineCodeSize = 0x1000;
+    ZwAllocateVirtualMemory(processHandle, &machineCodeUserMem, 0, &machineCodeSize, MEM_COMMIT, PAGE_EXECUTE); g_machineCodeUserMem = machineCodeUserMem;
+
+    PVOID unicodeStringUserMem = NULL;
+    SIZE_T unicodeStringSize = 0x1000;
+    ZwAllocateVirtualMemory(processHandle, &unicodeStringUserMem, 0, &unicodeStringSize, MEM_COMMIT, PAGE_READONLY); g_unicodeStructUserMem = unicodeStringUserMem;
+    ULONG_PTR unicodeStructAddress = ((ULONG_PTR)unicodeStringUserMem + 0x100);
+    ULONG_PTR retDllHandleAddress = ((ULONG_PTR)unicodeStringUserMem + 0x300);
+    ULONG_PTR retDllHandleInput2LdrLoadDll = ((ULONG_PTR)unicodeStringUserMem + 0x500);
+
+    UCHAR shellCode[] = {
+        0x55,                                                       // push rbp
+        0x48, 0x89, 0xE5,                                           // mov rbp, rsp
+        0x48, 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00,                   // sub rsp, 80h
+        0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, <LdrLoadDll>
+        0x48, 0x31, 0xC9,                                           // xor rcx, rcx
+        0x48, 0x31, 0xD2,                                           // xor rdx, rdx
+        0x49, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov r8, <dllPathUnicodeString>
+        0x49, 0xB9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov r9, <dllHandleRetAddress>
+        0xFF, 0xD0,                                                 // call rax
+        0x48, 0x81, 0xC4, 0x80, 0x00, 0x00, 0x00,                   // add rsp, 80h
+        0x48, 0x89, 0xEC,                                           // mov rsp, rbp
+        0x5D,                                                       // pop rbp
+        0xC3                                                        // ret                              
+    };
+
+    ULONG_PTR LdrLoadDllAddressRelo = (ULONG_PTR)machineCodeUserMem + 13;
+    ULONG_PTR dllPathUnicodeStringRelo = (ULONG_PTR)machineCodeUserMem + 29;
+    ULONG_PTR dllHandleRetAddressRelo = (ULONG_PTR)machineCodeUserMem + 39;
+
+    UNICODE_STRING dllPath = RTL_CONSTANT_STRING(L"D:\\testDLL.dll");
+
+    ULONG64 oldCR0 = 0x0;
+    PEPROCESS pe = NULL;
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KAPC_STATE apc = { 0 };
+    KeStackAttachProcess(pe, &apc);
+    __asm__WRbreak(&oldCR0);
+
+    /*进程内交互开始*/
+    //1.写入shellCode于machineCodeUserMem.
+    RtlCopyMemory(machineCodeUserMem, shellCode, sizeof(shellCode));
+    //2.写入WSTR的DLL完整路径宽字符串D:\\testDll.dll于unicodeStringUserMem.
+    RtlCopyMemory(unicodeStringUserMem, dllPath.Buffer, dllPath.MaximumLength);
+    //3.写入UNICODE_STRING的DLL结构作为LdrLoadDll的第三个参数.
+    //位于unicodeStringUserMem + 0x100(unicodeStructAddress).
+    *(USHORT*)unicodeStructAddress = dllPath.Length;
+    *(USHORT*)(unicodeStructAddress + 2) = dllPath.MaximumLength;
+    *(ULONG_PTR*)(unicodeStructAddress + 8) = (ULONG_PTR)unicodeStringUserMem;
+    //4.写入dllHandle的返回地址.
+    //此地址指向unicodeStringUserMem + 0x300(retDllHandleAddress).
+    //此地址位于unicodeStringUserMem + 0x500(retDllHandleInput2LdrLoadDll).
+    RtlCopyMemory((PVOID)retDllHandleInput2LdrLoadDll, &retDllHandleAddress, 8);
+    //5.重定位r8.
+    RtlCopyMemory((PVOID)dllPathUnicodeStringRelo, &unicodeStructAddress, 8);
+    //6.重定位r9.
+    RtlCopyMemory((PVOID)dllHandleRetAddressRelo, &retDllHandleInput2LdrLoadDll, 8);
+    //7.重定位LdrLoadDll的call地址.
+    RtlCopyMemory((PVOID)LdrLoadDllAddressRelo, &LdrLoadDll, 8);
+    /*进程内交互结束*/
+
+    __asm__WRrestore(oldCR0);
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+
+    DbgPrint("[machineCodeUserMem] -> 0x%p", machineCodeUserMem);
+    DbgPrint("[unicodeStringUserMem] -> 0x%p", unicodeStringUserMem);
+    DbgPrint("[unicodeStructAddress] -> 0x%p", (PVOID)unicodeStructAddress);
+    DbgPrint("[retDllHandleInput2LdrLoadDll] -> 0x%p", (PVOID)retDllHandleInput2LdrLoadDll);
+
+    HANDLE threadHandle = NULL;
+    OBJECT_ATTRIBUTES threadObja = { 0 }; InitializeObjectAttributes(&threadObja, NULL, 0, NULL, NULL);
+
+    DbgPrint("status: %d", NtCreateThreadEx(
+        &threadHandle,
+        THREAD_ALL_ACCESS,
+        &threadObja,
+        processHandle,
+        (PUSER_THREAD_START_ROUTINE)machineCodeUserMem,
+        NULL,
+        0x4, //THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER not defined.
+        0,
+        0,
+        0,
+        NULL
+    ) == STATUS_SUCCESS);
+
+    ZwClose(threadHandle); g_threadHandle = threadHandle;
+
+    return STATUS_SUCCESS;
+}
+*/
+
+/*
+    IDT HOOK:
+#include "DriverUserInteractionHeader.h"
+
+CONST INT _fltused = 0;
+
+#pragma warning(disable: 28182)
+#pragma warning(disable: 6011)
+
+#define ckStatus(sen) DbgPrint("%s -> %lX", (CONST CHAR*)#sen, (ULONG)(sen))
+
+#define byteSize 14
+
+PVOID base = (PVOID)0xfffff8027040b306;
+UCHAR g_original_14_Bytes[byteSize] = { 0 };
+
+VOID testX()
+{
+    CR0breakOperation(memcpy(base, g_original_14_Bytes, byteSize););
+    DbgPrint("IDT Hook Successfully!");
+    DbgPrint("IDT Function Hooked: KiDivideErrorFault, with IDT Index 0");
+    __asm__jump((ULONG64)base);
+    return;
+}
+
+VOID driverUnload(PDRIVER_OBJECT driverObject)
+{
+    UNREFERENCED_PARAMETER(driverObject);
+    DbgPrint("Driver Unload\n");
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+{
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+    memcpy(g_original_14_Bytes, base, byteSize);
+    UCHAR* pointerToNewHookFunctionAddressTemp = (UCHAR*)testX;
+    UCHAR shellCode[byteSize] =
+    {
+        0x48, 0xB8, //mov rax, address
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[0],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[1],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[2],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[3],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[4],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[5],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[6],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[7],
+        0xFF, 0xE0, //jmp rax
+        0x90, //nop
+        0x90  //nop
+    };
+    for (size_t j = 0; j < byteSize; j++)
+    {
+        DbgPrint("%hhX", shellCode[j]);
+    }
+    CR0breakOperation(memcpy(base, (PVOID)shellCode, byteSize););
+    return STATUS_SUCCESS;
+}
+
+
+*/
+
+/*
+    
+    UCHAR shellCode[] =
+    {
+        0x9C, //pushfq
+        0x48, 0xB8, //mov rax, address
+        //address 8 Bytes
+        0xFF, 0xE0, //jmp rax
+        0x9D, //popfq
+        0xE8, 0x99, 0x7E, 0x00, 0x00 //call nt!KiExceptionDispatch (fffff801`4fc12ac0)
+    };
+*/
+
+/*
+    SSDT INLINE HOOK :
+#include "DriverUserInteractionHeader.h"
+
+CONST INT _fltused = 0;
+
+#define totalCpuCount 12
+#define pageSize 4096
+
+#pragma warning(disable: 28182)
+#pragma warning(disable: 6011)
+
+#define ckStatus(sen) DbgPrint("%s -> %lX", (CONST CHAR*)#sen, (ULONG)(sen))
+
+UCHAR original_13_Bytes[13] = { 0 };
+UCHAR hooked_13_Bytes[13] = { 0 };
+
+NTSTATUS myNtOpenProcessX(
+    PHANDLE            ProcessHandle,
+    ACCESS_MASK        DesiredAccess,
+    POBJECT_ATTRIBUTES ObjectAttributes,
+    PCLIENT_ID         ClientId
+)
+{
+    if (ClientId->UniqueProcess == (HANDLE)0x4)
+    {
+        *ProcessHandle = NULL;
+        return STATUS_UNSUCCESSFUL;
+    }
+    else
+    {
+        NTSTATUS st = STATUS_SUCCESS;
+        CR0breakOperation(memcpy((PVOID)getSSDTFunctionAddressByIndex(38), original_13_Bytes, 13););
+        st = ((NTSTATUS(*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PCLIENT_ID))getSSDTFunctionAddressByIndex(38))(ProcessHandle, DesiredAccess, ObjectAttributes, ClientId);
+        CR0breakOperation(memcpy((PVOID)getSSDTFunctionAddressByIndex(38), hooked_13_Bytes, 13););
+        return st;
+    }
+}
+
+VOID driverUnload(PDRIVER_OBJECT driverObject)
+{
+    UNREFERENCED_PARAMETER(driverObject);
+    CR0breakOperation(memcpy((PVOID)getSSDTFunctionAddressByIndex(38), original_13_Bytes, 13););
+    DbgPrint("Driver Unload\n");
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+{
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+    memcpy(original_13_Bytes, (PVOID)getSSDTFunctionAddressByIndex(38), 13);
+    UCHAR* pointerToNewHookFunctionAddressTemp = (UCHAR*)myNtOpenProcessX;
+    UCHAR shellCode[13] = {
+        0x48, 0xB8,
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[0],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[1],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[2],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[3],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[4],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[5],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[6],
+        ((UCHAR*)&pointerToNewHookFunctionAddressTemp)[7],
+        0xFF,0xE0, 0x90
+    };
+    memcpy(hooked_13_Bytes, shellCode, 13);
+    CR0breakOperation(memcpy((PVOID)getSSDTFunctionAddressByIndex(38), hooked_13_Bytes, 13););
+    return STATUS_SUCCESS;
+}
+*/
+
+/*    
+    PUCHAR seg_regs[32] = { 0 };
+    DbgPrint("status: %lX", __asm__checkSegmentRegistor(seg_regs));
+    DbgPrint("es: %lX", *(ULONG*)seg_regs);
+    DbgPrint("cs: %lX", *(ULONG*)((ULONG64)seg_regs + 4));
+    DbgPrint("ss: %lX", *(ULONG*)((ULONG64)seg_regs + 8));
+    DbgPrint("ds: %lX", *(ULONG*)((ULONG64)seg_regs + 12));
+    DbgPrint("fs: %lX", *(ULONG*)((ULONG64)seg_regs + 16));
+    DbgPrint("gs: %lX", *(ULONG*)((ULONG64)seg_regs + 20));
+    DbgPrint("cr8: %llX", *(ULONG64*)((ULONG64)seg_regs + 24));
+*/
+
+/*
+    假弹调试器
+    ULONG64 pid = 9852;
+    NTSTATUS st = STATUS_SUCCESS;
+    PEPROCESS pe = NULL;
+    st = PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("before: 0x%p", *(HANDLE*)((ULONG64)pe + 0x578));
+    }
+    HANDLE hProcess = NULL;
+    OBJECT_ATTRIBUTES obja = { 0 };
+    InitializeObjectAttributes(&obja, NULL, 0, NULL, NULL);
+    CLIENT_ID cid = { 0 };
+    cid.UniqueProcess = (HANDLE)pid;
+    cid.UniqueThread = NULL;
+    st = ZwOpenProcess(&hProcess, PROCESS_ALL_ACCESS, &obja, &cid);
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("go.");
+    }
+    HANDLE hDebugObject = NULL;
+    OBJECT_ATTRIBUTES objax = { 0 };
+    InitializeObjectAttributes(&objax, NULL, 0, NULL, NULL);
+    st = ((NTSTATUS(*)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, ULONG))(getSSDTFunctionAddressByIndex(0xA6)))(&hDebugObject, PROCESS_ALL_ACCESS, &objax, 0x1); //Windows 10 x64, 22H2 -> NtCreateDebugObject 未公开
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("gogo.");
+    }
+    st = ((NTSTATUS(*)(HANDLE, HANDLE))getSSDTFunctionAddressByIndex(0xCE))(hProcess, hDebugObject); //Windows 10 x64, 22H2 -> NtDebugActiveProcess 未公开
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("gogogogo.");
+    }
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("after: 0x%p", *(HANDLE*)((ULONG64)pe + 0x578));
+    }
+    st = ((NTSTATUS(*)(HANDLE, HANDLE))getSSDTFunctionAddressByIndex(0x173))(hProcess, hDebugObject); //Windows 10 x64, 22H2 -> NtRemoveProcessDebug 未公开
+    if (NT_SUCCESS(st))
+    {
+        DbgPrint("gogogogogogogogo.");
+    }
+    if (NT_SUCCESS(st)) //0xCF
+    {
+        DbgPrint("after: 0x%p", *(HANDLE*)((ULONG64)pe + 0x578));
+    }
+    return STATUS_SUCCESS;
+*/
+/*
+    VOID driverUnload(PDRIVER_OBJECT driverObject)
+{
+    UNREFERENCED_PARAMETER(driverObject);
+
+    UCHAR currCPU = (UCHAR)KeGetCurrentProcessorIndex();
+    DbgPrint("当前卸载函数的逻辑CPU编号:%lu", currCPU);
+    if (cpuid[currCPU] == 0x1)
+    {
+        __vasm__VMXOFF();
+        DbgPrint("神！VMXOFF执行成功，逻辑CPU编号:%lu", currCPU);
+        cpuid[currCPU] = 0xFF;
+    }
+
+    return;
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+{
+    UNREFERENCED_PARAMETER(reg_path);
+    driverObject->DriverUnload = driverUnload;
+    DbgPrint("当前CR4数值: %llX (h)", __vasm__enableVMXEonCR4());
+    PHYSICAL_ADDRESS t = { 0 };
+    t.QuadPart = MAXULONG64;
+    PVOID p = MmAllocateContiguousMemory(4096, t);
+    RtlZeroMemory(p, 4096);
+    *(ULONG*)p = 4;
+    PHYSICAL_ADDRESS Pp = MmGetPhysicalAddress(p);
+    ULONG64 rflags = __vasm__VMXON(Pp.QuadPart);
+    UCHAR currCPU = (UCHAR)KeGetCurrentProcessorIndex();
+    DbgPrint("当前RFLAGS: %llX, 逻辑CPU: %lu, 结果: %hhX", rflags, currCPU, (rflags & 1ull) ? 0 : 1);
+    cpuid[currCPU] = 0x1;
+    return STATUS_SUCCESS;
+}
+
+
+*/
+
+/*
+    __vasm__enableVMXEonCR4();
+    PHYSICAL_ADDRESS t = { 0 };
+    t.QuadPart = MAXULONG64;
+    PVOID p = MmAllocateContiguousMemory(4096, t);
+    DbgPrint("%p", p);
+    RtlZeroMemory(p, 4096);
+    *(ULONG*)p = 4;
+    PHYSICAL_ADDRESS Pp = MmGetPhysicalAddress(p);
+    DbgPrint("%llX", Pp.QuadPart);
+*/
+
+/*
+    driverObject->Flags |= DO_BUFFERED_IO;
+    PDEVICE_OBJECT devObj = NULL;
+    UNICODE_STRING deviceName = { 0 };
+    RtlInitUnicodeString(&deviceName, L"\\Device\\ANYIFEI_device_NAME");
+    UNICODE_STRING deviceSymbolicName = { 0 };
+    RtlInitUnicodeString(&deviceSymbolicName, L"\\??\\ANYIFEI_SYMBOLINK_NAME");
+    IoCreateDevice(driverObject, 0, &deviceName, FILE_DEVICE_UNKNOWN, 0, TRUE, &devObj);
+    IoCreateSymbolicLink(&deviceSymbolicName, &deviceName);
+    driverObject->MajorFunction[IRP_MJ_CREATE] = myCreate;
+    driverObject->MajorFunction[IRP_MJ_CLOSE] = myClose;
+    driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = Driver_User_IO_Interaction_Entry;
+*/
+
+/*
+    UNICODE_STRING deviceSymbolicName = { 0 };
+    RtlInitUnicodeString(&deviceSymbolicName, L"\\??\\ANYIFEI_SYMBOLINK_NAME");
+    IoDeleteSymbolicLink(&deviceSymbolicName);
+    IoDeleteDevice(driverObject->DeviceObject);
+*/
+
+/*
+//时间HOOK：
+    #include "DriverUserInteractionHeader.h"
+
+    //CONST INT _fltused = 0;
+
+    ULONG64 funcAddress = 0x0;
+    LARGE_INTEGER beginTimeStamp = { 0 };
+    ULONG oldOffset = 0;
+
+    VOID driverUnload(PDRIVER_OBJECT driverObject)
+    {
+        UNREFERENCED_PARAMETER(driverObject);
+        hookSSDTRestore(0x31, oldOffset);
+        return;
+    }
+    NTSTATUS myNtQueryPerformanceCounter(PLARGE_INTEGER PerformanceCounter, PLARGE_INTEGER PerformanceFrequency)
+    {
+        NTSTATUS status = ((NTSTATUS(*)(PLARGE_INTEGER, PLARGE_INTEGER))(funcAddress))(PerformanceCounter, PerformanceFrequency);
+        PerformanceCounter->QuadPart = beginTimeStamp.QuadPart + 60 * (PerformanceCounter->QuadPart - beginTimeStamp.QuadPart);
+        return status;
+    }
+    NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING reg_path)
+    {
+        UNREFERENCED_PARAMETER(reg_path);
+        driverObject->DriverUnload = driverUnload;
+        ULONG64 pid = getPIDByProcessName((PUCHAR)"explorer.exe");
+        UCHAR activateByte = 0x80;
+        writeProcessMemory(pid, (PVOID)0x7FFE03C6, &activateByte, 1);
+        funcAddress = getSSDTFunctionAddressByIndex(0x31);
+        UNREFERENCED_PARAMETER(((NTSTATUS(*)(PLARGE_INTEGER, PLARGE_INTEGER))(funcAddress))(&beginTimeStamp, NULL));
+        oldOffset = hookSSDTProcedure(0x31, (ULONG64)myNtQueryPerformanceCounter);
+        return STATUS_SUCCESS;
+    }
+
+
+*/
