@@ -12,47 +12,47 @@ HANDLE hDevice = NULL;
 int main(void)
 {
 	pid = 0;
-	printf("½ø³ÌPID£¨ÒÔÊ®½øÖÆÊäÈë£©£º");
+	printf("è¿›ç¨‹PIDï¼ˆä»¥åè¿›åˆ¶è¾“å…¥ï¼‰ï¼š");
 	scanf_s("%llu", &pid);
 	hDevice = CreateFile(L"\\\\.\\ANYIFEI_SYMBOLINK_NAME", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 	printf("____$_INITIALIZE_DRIVER_SETTINGS_$____\n");
 	if (DeviceIoControl(hDevice, ____$_INITIZE_PROCESS_ID_$____, &pid, sizeof(HANDLE), NULL, 0, NULL, NULL))
 	{
-		log([sYsHacker] »ñÈ¡½ø³Ì¾ä±ú³É¹¦\n);
+		log([sYsHacker] è·å–è¿›ç¨‹å¥æŸ„æˆåŠŸ\n);
 	}
 	else
 	{
-		log([sYsHacker] »ñÈ¡½ø³Ì¾ä±úÊ§°Ü£¬¹Ø±Õ³ÌĞò\n);
+		log([sYsHacker] è·å–è¿›ç¨‹å¥æŸ„å¤±è´¥ï¼Œå…³é—­ç¨‹åº\n);
 		CloseHandle(hDevice);
 		return 0xCC;
 	}
 	if (DeviceIoControl(hDevice, ____$_INITIALIZE_PROCESS_MEMORY_SPACE_$____, NULL, 0, NULL, 0, NULL, NULL))
 	{
-		log([sYsHacker] ½ø³ÌÄÚ´æ³õÊ¼»¯³É¹¦\n); 
+		log([sYsHacker] è¿›ç¨‹å†…å­˜åˆå§‹åŒ–æˆåŠŸ\n); 
 	}
 	else
 	{
-		log(½ø³ÌÄÚ´æ³õÊ¼»¯Ê§°Ü£¬¹Ø±Õ³ÌĞò\n);
+		log(è¿›ç¨‹å†…å­˜åˆå§‹åŒ–å¤±è´¥ï¼Œå…³é—­ç¨‹åº\n);
 		CloseHandle(hDevice);
 		return 0xDD;
 	}
 
 	PSI si = NULL;
-	log(ÊäÈëËÑË÷Ä£Ê½£º1.¾«È·ÊıÖµ£»2.Ä£ºıËÑË÷£»3.Ä£Ê½Æ¥Åä.);
+	log(è¾“å…¥æœç´¢æ¨¡å¼ï¼š1.ç²¾ç¡®æ•°å€¼ï¼›2.æ¨¡ç³Šæœç´¢ï¼›3.æ¨¡å¼åŒ¹é….);
 	ULONG mainMark = 0;
 	scanf_s("%lu", &mainMark);
 	switch (mainMark)
 	{
 		case 1:
 		{
-			log(¡¾¾«È·ÊıÖµ¡¿ÊäÈëÊı¾İÀàĞÍ£º1.µ¥×Ö½Ú£»2.Ë«×Ö½Ú£»3.ËÄ×Ö½Ú£»4.°Ë×Ö½Ú.);
+			log(ã€ç²¾ç¡®æ•°å€¼ã€‘è¾“å…¥æ•°æ®ç±»å‹ï¼š1.å•å­—èŠ‚ï¼›2.åŒå­—èŠ‚ï¼›3.å››å­—èŠ‚ï¼›4.å…«å­—èŠ‚.);
 			ULONG subMark = 0;
 			scanf_s("%lu", &subMark);
 			switch (subMark)
 			{
 				case 1:
 				{
-					log(ÊäÈëµ¥×Ö½ÚÊı¾İ£º);
+					log(è¾“å…¥å•å­—èŠ‚æ•°æ®ï¼š);
 					UCHAR* buf = (UCHAR*)malloc(sizeof(UCHAR));
 					scanf_s("%hhu", buf);
 					si = initializeSI(
@@ -68,7 +68,7 @@ int main(void)
 				}
 				case 2:
 				{
-					log(ÊäÈëË«×Ö½ÚÊı¾İ£º);
+					log(è¾“å…¥åŒå­—èŠ‚æ•°æ®ï¼š);
 					USHORT* buf = (USHORT*)malloc(sizeof(USHORT));
 					scanf_s("%hu", buf);
 					si = initializeSI(
@@ -84,7 +84,7 @@ int main(void)
 				}
 				case 3:
 				{
-					log(ÊäÈëËÄ×Ö½ÚÊı¾İ£º);
+					log(è¾“å…¥å››å­—èŠ‚æ•°æ®ï¼š);
 					UINT* buf = (UINT*)malloc(sizeof(UINT));
 					scanf_s("%u", buf);
 					si = initializeSI(
@@ -100,7 +100,7 @@ int main(void)
 				}
 				case 4:
 				{
-					log(ÊäÈë°Ë×Ö½ÚÊı¾İ£º);
+					log(è¾“å…¥å…«å­—èŠ‚æ•°æ®ï¼š);
 					ULONG64* buf = (ULONG64*)malloc(sizeof(ULONG64));
 					scanf_s("%llu", buf);
 					si = initializeSI(
@@ -123,17 +123,17 @@ int main(void)
 		}
 		case 2: 
 		{
-			log(¡¾Ä£ºıËÑË÷¡¿ÊäÈëÊı¾İÀàĞÍ£º1.µ¥×Ö½Ú£»2.Ë«×Ö½Ú£»3.ËÄ×Ö½Ú£»4.°Ë×Ö½Ú£»5.µ¥¸¡µã£»6.Ë«¸¡µã.);
+			log(ã€æ¨¡ç³Šæœç´¢ã€‘è¾“å…¥æ•°æ®ç±»å‹ï¼š1.å•å­—èŠ‚ï¼›2.åŒå­—èŠ‚ï¼›3.å››å­—èŠ‚ï¼›4.å…«å­—èŠ‚ï¼›5.å•æµ®ç‚¹ï¼›6.åŒæµ®ç‚¹.);
 			ULONG subMark = 0;
 			scanf_s("%lu", &subMark);
 			switch (subMark)
 			{
 				case 1:
 				{
-					log(ÊäÈëµ¥×Ö½ÚÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥å•å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					UCHAR* l = (UCHAR*)malloc(sizeof(UCHAR));
 					scanf_s("%hhu", l);
-					log(ÊäÈëµ¥×Ö½ÚÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥å•å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					UCHAR* h = (UCHAR*)malloc(sizeof(UCHAR));
 					scanf_s("%hhu", h);
 					si = initializeSI(
@@ -149,10 +149,10 @@ int main(void)
 				}
 				case 2:
 				{
-					log(ÊäÈëË«×Ö½ÚÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥åŒå­—èŠ‚æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					USHORT* l = (USHORT*)malloc(sizeof(USHORT));
 					scanf_s("%hu", l);
-					log(ÊäÈëË«×Ö½ÚÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥åŒå­—èŠ‚æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					USHORT* h = (USHORT*)malloc(sizeof(USHORT));
 					scanf_s("%hu", h);
 					si = initializeSI(
@@ -168,10 +168,10 @@ int main(void)
 				}
 				case 3:
 				{
-					log(ÊäÈëËÄ×Ö½ÚÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥å››å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					UINT* l = (UINT*)malloc(sizeof(UINT));
 					scanf_s("%u", l);
-					log(ÊäÈëËÄ×Ö½ÚÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥å››å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					UINT* h = (UINT*)malloc(sizeof(UINT));
 					scanf_s("%u", h);
 					si = initializeSI(
@@ -187,10 +187,10 @@ int main(void)
 				}
 				case 4:
 				{
-					log(ÊäÈë°Ë×Ö½ÚÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥å…«å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					ULONG64* l = (ULONG64*)malloc(sizeof(ULONG64));
 					scanf_s("%llu", l);
-					log(ÊäÈë°Ë×Ö½ÚÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥å…«å­—èŠ‚æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					ULONG64* h = (ULONG64*)malloc(sizeof(ULONG64));
 					scanf_s("%llu", h);
 					si = initializeSI(
@@ -206,10 +206,10 @@ int main(void)
 				}
 				case 5:
 				{
-					log(ÊäÈëµ¥¸¡µãÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥å•æµ®ç‚¹æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					float* l = (float*)malloc(sizeof(float));
 					scanf_s("%f", l);
-					log(ÊäÈëµ¥¸¡µãÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥å•æµ®ç‚¹æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					float* h = (float*)malloc(sizeof(float));
 					scanf_s("%f", h);
 					si = initializeSI(
@@ -226,10 +226,10 @@ int main(void)
 				}
 				case 6:
 				{
-					log(ÊäÈëË«¸¡µãÄ£ºıËÑË÷ÏÂ½ç£º);
+					log(è¾“å…¥åŒæµ®ç‚¹æ¨¡ç³Šæœç´¢ä¸‹ç•Œï¼š);
 					double* l = (double*)malloc(sizeof(double));
 					scanf_s("%lf", l);
-					log(ÊäÈëË«¸¡µãÄ£ºıËÑË÷ÉÏ½ç£º);
+					log(è¾“å…¥åŒæµ®ç‚¹æ¨¡ç³Šæœç´¢ä¸Šç•Œï¼š);
 					double* h = (double*)malloc(sizeof(double));
 					scanf_s("%lf", h);
 					si = initializeSI(
@@ -254,15 +254,15 @@ int main(void)
 		{
 			CONST PUCHAR p = (CONST PUCHAR)malloc(500 * sizeof(UCHAR));
 			RtlZeroMemory(p, 500);
-			log(¡¾×Ö·û´®¡¿ÊäÈë×Ö·û´®ÊıÑ§³¤¶È£º);
+			log(ã€å­—ç¬¦ä¸²ã€‘è¾“å…¥å­—ç¬¦ä¸²æ•°å­¦é•¿åº¦ï¼š);
 			ULONG len = 0;	
 			scanf_s("%lu", &len);
-			log(¡¾×Ö·û´®¡¿ÊäÈë×Ö·û´®£º);
-			//±ÈÈçÊäÈëÊıÑ§³¤¶ÈÊÇ9£¬×Ö·û´®ÊÇ"woaiwojia"£¬ÄÇÃ´ÔÚp³ØÖĞ´æ´¢µÄÊÇ"woaiwojia\0".
-			//µ«ÊÇ´«ÈëSIµÄÊ±ºòÖ»´«Èëp³ØÇ°Ãæ·Ç\0µÄ²¿·Ö£¬Òò´ËÔÚscanf_sÖĞ³¤¶ÈÊÇlen + 1µ«ÊÇSIÖ»½ØÈ¡len¸ö×Ö·û.
-			//Èç¹ûscanf_sÖĞ²»ÊÇlen + 1£¬ÄÇÃ´printfÎŞ·¨Õı³£ÓÃ%s´òÓ¡´Ë×Ö·û´®.
-			//¡¾Î£ÏÕ¡¿ÔÚÇı¶¯³ÌĞòÖĞÍòÍò²»¿ÉÓÃ%sÊä³ö´Ë×Ö·û´®£¡£¡£¡£¡£¡£¡
-			//¡¾Î£ÏÕ¡¿±ØĞëÓÃstrncmp/Ñ­»· + %c + ³¤¶ÈµÈ·½Ê½±£ÊØ¿ØÖÆÊä³ö£¡£¡£¡
+			log(ã€å­—ç¬¦ä¸²ã€‘è¾“å…¥å­—ç¬¦ä¸²ï¼š);
+			//æ¯”å¦‚è¾“å…¥æ•°å­¦é•¿åº¦æ˜¯9ï¼Œå­—ç¬¦ä¸²æ˜¯"woaiwojia"ï¼Œé‚£ä¹ˆåœ¨pæ± ä¸­å­˜å‚¨çš„æ˜¯"woaiwojia\0".
+			//ä½†æ˜¯ä¼ å…¥SIçš„æ—¶å€™åªä¼ å…¥pæ± å‰é¢é\0çš„éƒ¨åˆ†ï¼Œå› æ­¤åœ¨scanf_sä¸­é•¿åº¦æ˜¯len + 1ä½†æ˜¯SIåªæˆªå–lenä¸ªå­—ç¬¦.
+			//å¦‚æœscanf_sä¸­ä¸æ˜¯len + 1ï¼Œé‚£ä¹ˆprintfæ— æ³•æ­£å¸¸ç”¨%sæ‰“å°æ­¤å­—ç¬¦ä¸².
+			//ã€å±é™©ã€‘åœ¨é©±åŠ¨ç¨‹åºä¸­ä¸‡ä¸‡ä¸å¯ç”¨%sè¾“å‡ºæ­¤å­—ç¬¦ä¸²ï¼ï¼ï¼ï¼ï¼ï¼
+			//ã€å±é™©ã€‘å¿…é¡»ç”¨strncmp/å¾ªç¯ + %c + é•¿åº¦ç­‰æ–¹å¼ä¿å®ˆæ§åˆ¶è¾“å‡ºï¼ï¼ï¼
 			scanf_s("%s", p, len + 1);
 			si = initializeSI(
 				TRUE,
@@ -284,7 +284,7 @@ int main(void)
 	ULONG continueMark = 0;
 	while (1)
 	{
-		log(¼ÌĞøËÑË÷£¿1ÊÇ0·ñ.);
+		log(ç»§ç»­æœç´¢ï¼Ÿ1æ˜¯0å¦.);
 		scanf_s("%lu", &continueMark);
 		if (continueMark == 0)
 		{
@@ -298,7 +298,7 @@ int main(void)
 			{
 				case UNION_MEMBER_PRECISE:
 				{
-					log(ÉÏ´ÎÊÇ¾«È·ËÑË÷¡£ÊäÈë¼ÌĞøËÑË÷Ä£Ê½£º1.¾«È·ËÑË÷£»2.±ä´óµÄÊıÖµ£»3.±äĞ¡µÄÊıÖµ£»4.Î´±ä¶¯µÄÊıÖµ£»5.Ôö´óÁËÄ³¸öÖ¸¶¨Öµ£»6.¼õĞ¡ÁËÄ³¸öÖ¸¶¨Öµ.);
+					log(ä¸Šæ¬¡æ˜¯ç²¾ç¡®æœç´¢ã€‚è¾“å…¥ç»§ç»­æœç´¢æ¨¡å¼ï¼š1.ç²¾ç¡®æœç´¢ï¼›2.å˜å¤§çš„æ•°å€¼ï¼›3.å˜å°çš„æ•°å€¼ï¼›4.æœªå˜åŠ¨çš„æ•°å€¼ï¼›5.å¢å¤§äº†æŸä¸ªæŒ‡å®šå€¼ï¼›6.å‡å°äº†æŸä¸ªæŒ‡å®šå€¼.);
 					ULONG continueType = 0;
 					scanf_s("%lu", &continueType);
 					switch (continueType)
@@ -310,25 +310,25 @@ int main(void)
 							{
 								case TYPE_BYTE:
 								{
-									log(ÊäÈëĞÂµÄµ¥×Ö½ÚÊı¾İ£º);
+									log(è¾“å…¥æ–°çš„å•å­—èŠ‚æ•°æ®ï¼š);
 									scanf_s("%hhu", (UCHAR*)si->u.precise.ptr2Value);
 									break;
 								}
 								case TYPE_WORD:
 								{
-									log(ÊäÈëĞÂµÄË«×Ö½ÚÊı¾İ£º);
+									log(è¾“å…¥æ–°çš„åŒå­—èŠ‚æ•°æ®ï¼š);
 									scanf_s("%hu", (USHORT*)si->u.precise.ptr2Value);
 									break;
 								}
 								case TYPE_DWORD:
 								{
-									log(ÊäÈëĞÂµÄËÄ×Ö½ÚÊı¾İ£º);
+									log(è¾“å…¥æ–°çš„å››å­—èŠ‚æ•°æ®ï¼š);
 									scanf_s("%u", (UINT*)si->u.precise.ptr2Value);
 									break;
 								}
 								case TYPE_QWORD:
 								{
-									log(ÊäÈëĞÂµÄ°Ë×Ö½ÚÊı¾İ£º);
+									log(è¾“å…¥æ–°çš„å…«å­—èŠ‚æ•°æ®ï¼š);
 									scanf_s("%llu", (ULONG64*)si->u.precise.ptr2Value);
 									break;
 								}
@@ -378,7 +378,7 @@ int main(void)
 				}
 				case UNION_MEMBER_REGION:
 				{
-					log(ÉÏ´ÎÊÇÄ£ºıËÑË÷¡£ÊäÈë¼ÌĞøËÑË÷Ä£Ê½£º1.Çø¼äÊıÖµ£»2.±ä´óµÄÊıÖµ£»3.±äĞ¡µÄÊıÖµ£»4.Î´±ä¶¯µÄÊıÖµ£»5.Ôö´óÁËÄ³¸öÖ¸¶¨Öµ£»6.¼õĞ¡ÁËÄ³¸öÖ¸¶¨Öµ.);
+					log(ä¸Šæ¬¡æ˜¯æ¨¡ç³Šæœç´¢ã€‚è¾“å…¥ç»§ç»­æœç´¢æ¨¡å¼ï¼š1.åŒºé—´æ•°å€¼ï¼›2.å˜å¤§çš„æ•°å€¼ï¼›3.å˜å°çš„æ•°å€¼ï¼›4.æœªå˜åŠ¨çš„æ•°å€¼ï¼›5.å¢å¤§äº†æŸä¸ªæŒ‡å®šå€¼ï¼›6.å‡å°äº†æŸä¸ªæŒ‡å®šå€¼.);
 					ULONG continueType = 0;
 					scanf_s("%lu", &continueType);
 					switch (continueType)
@@ -390,49 +390,49 @@ int main(void)
 							{
 								case TYPE_BYTE:
 								{
-									log(ÊäÈëĞÂµÄµ¥×Ö½ÚÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„å•å­—èŠ‚ä¸‹ç•Œï¼š);
 									scanf_s("%hhu", (UCHAR*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄµ¥×Ö½ÚÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„å•å­—èŠ‚ä¸Šç•Œï¼š);
 									scanf_s("%hhu", (UCHAR*)si->u.region.ptr2HigherBound);
 									break;
 								}
 								case TYPE_WORD:
 								{
-									log(ÊäÈëĞÂµÄË«×Ö½ÚÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„åŒå­—èŠ‚ä¸‹ç•Œï¼š);
 									scanf_s("%hu", (USHORT*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄË«×Ö½ÚÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„åŒå­—èŠ‚ä¸Šç•Œï¼š);
 									scanf_s("%hu", (USHORT*)si->u.region.ptr2HigherBound);
 									break;
 								}
 								case TYPE_DWORD:
 								{
-									log(ÊäÈëĞÂµÄËÄ×Ö½ÚÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„å››å­—èŠ‚ä¸‹ç•Œï¼š);
 									scanf_s("%u", (UINT*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄËÄ×Ö½ÚÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„å››å­—èŠ‚ä¸Šç•Œï¼š);
 									scanf_s("%u", (UINT*)si->u.region.ptr2HigherBound);
 									break;
 								}
 								case TYPE_QWORD:
 								{
-									log(ÊäÈëĞÂµÄ°Ë×Ö½ÚÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„å…«å­—èŠ‚ä¸‹ç•Œï¼š);
 									scanf_s("%llu", (ULONG64*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄ°Ë×Ö½ÚÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„å…«å­—èŠ‚ä¸Šç•Œï¼š);
 									scanf_s("%llu", (ULONG64*)si->u.region.ptr2HigherBound);
 									break;
 								}
 								case TYPE_FLOAT:
 								{
-									log(ÊäÈëĞÂµÄµ¥¸¡µãÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„å•æµ®ç‚¹ä¸‹ç•Œï¼š);
 									scanf_s("%f", (float*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄµ¥¸¡µãÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„å•æµ®ç‚¹ä¸Šç•Œï¼š);
 									scanf_s("%f", (float*)si->u.region.ptr2HigherBound);
 									break;
 								}
 								case TYPE_DOUBLE:
 								{
-									log(ÊäÈëĞÂµÄË«¸¡µãÏÂ½ç£º);
+									log(è¾“å…¥æ–°çš„åŒæµ®ç‚¹ä¸‹ç•Œï¼š);
 									scanf_s("%lf", (double*)si->u.region.ptr2LowerBound);
-									log(ÊäÈëĞÂµÄË«¸¡µãÉÏ½ç£º);
+									log(è¾“å…¥æ–°çš„åŒæµ®ç‚¹ä¸Šç•Œï¼š);
 									scanf_s("%lf", (double*)si->u.region.ptr2HigherBound);
 									break;
 								}
@@ -482,18 +482,18 @@ int main(void)
 				case UNION_MEMBER_PATTERN:
 				{
 					RtlZeroMemory(si->u.pattern.ptr2Pattern, si->u.pattern.patternLen);
-					log(ÉÏ´ÎÊÇ×Ö·û´®Æ¥Åä¡£Ö»ÄÜ¼ÌĞøÑ¡Ôñ×Ö·û´®¾«È·Æ¥Åä.);
+					log(ä¸Šæ¬¡æ˜¯å­—ç¬¦ä¸²åŒ¹é…ã€‚åªèƒ½ç»§ç»­é€‰æ‹©å­—ç¬¦ä¸²ç²¾ç¡®åŒ¹é….);
 					si->scanType = CONTINUE_PATTERN;
-					log(ÊäÈëĞÂ×Ö·û´®³¤¶È£º);
-					//±ÈÈçÊäÈëÊıÑ§³¤¶ÈÊÇ9£¬×Ö·û´®ÊÇ"woaiwojia"£¬ÄÇÃ´ÔÚp³ØÖĞ´æ´¢µÄÊÇ"woaiwojia\0".
-					//µ«ÊÇ´«ÈëSIµÄÊ±ºòÖ»´«Èëp³ØÇ°Ãæ·Ç\0µÄ²¿·Ö£¬Òò´ËÔÚscanf_sÖĞ³¤¶ÈÊÇlen + 1µ«ÊÇSIÖ»½ØÈ¡len¸ö×Ö·û.
-					//Èç¹ûscanf_sÖĞ²»ÊÇlen + 1£¬ÄÇÃ´printfÎŞ·¨Õı³£ÓÃ%s´òÓ¡´Ë×Ö·û´®.
-					//¡¾Î£ÏÕ¡¿ÔÚÇı¶¯³ÌĞòÖĞÍòÍò²»¿ÉÓÃ%sÊä³ö´Ë×Ö·û´®£¡£¡£¡£¡£¡£¡
-					//¡¾Î£ÏÕ¡¿±ØĞëÓÃstrncmp/Ñ­»· + %c + ³¤¶ÈµÈ·½Ê½±£ÊØ¿ØÖÆÊä³ö£¡£¡£¡
+					log(è¾“å…¥æ–°å­—ç¬¦ä¸²é•¿åº¦ï¼š);
+					//æ¯”å¦‚è¾“å…¥æ•°å­¦é•¿åº¦æ˜¯9ï¼Œå­—ç¬¦ä¸²æ˜¯"woaiwojia"ï¼Œé‚£ä¹ˆåœ¨pæ± ä¸­å­˜å‚¨çš„æ˜¯"woaiwojia\0".
+					//ä½†æ˜¯ä¼ å…¥SIçš„æ—¶å€™åªä¼ å…¥pæ± å‰é¢é\0çš„éƒ¨åˆ†ï¼Œå› æ­¤åœ¨scanf_sä¸­é•¿åº¦æ˜¯len + 1ä½†æ˜¯SIåªæˆªå–lenä¸ªå­—ç¬¦.
+					//å¦‚æœscanf_sä¸­ä¸æ˜¯len + 1ï¼Œé‚£ä¹ˆprintfæ— æ³•æ­£å¸¸ç”¨%sæ‰“å°æ­¤å­—ç¬¦ä¸².
+					//ã€å±é™©ã€‘åœ¨é©±åŠ¨ç¨‹åºä¸­ä¸‡ä¸‡ä¸å¯ç”¨%sè¾“å‡ºæ­¤å­—ç¬¦ä¸²ï¼ï¼ï¼ï¼ï¼ï¼
+					//ã€å±é™©ã€‘å¿…é¡»ç”¨strncmp/å¾ªç¯ + %c + é•¿åº¦ç­‰æ–¹å¼ä¿å®ˆæ§åˆ¶è¾“å‡ºï¼ï¼ï¼
 					ULONG len = 0;
 					scanf_s("%lu", &len);
 					si->u.pattern.patternLen = len;
-					log(ÊäÈëĞÂ×Ö·û´®£º);
+					log(è¾“å…¥æ–°å­—ç¬¦ä¸²ï¼š);
 					scanf_s("%s", si->u.pattern.ptr2Pattern, len + 1);
 					break;
 				}
