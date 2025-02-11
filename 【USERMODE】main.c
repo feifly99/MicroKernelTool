@@ -441,6 +441,7 @@ int main(void)
 									break;
 								}
 							}
+							break;
 						}
 						case 2:
 						{
