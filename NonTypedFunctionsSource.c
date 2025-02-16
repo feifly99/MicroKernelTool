@@ -387,10 +387,9 @@ VOID dllInjectionByRemoteThread(
     PUNICODE_STRING dllFullPath
 )
 {
-    CONST ULONG64 SYSTEM_PID = 0x4;
-
     ULONG64 pid = getPIDByProcessName(processNameWannaInjectTo);
-    if (pid == SYSTEM_PID)
+
+    if (pid == 0x4)
     {
         DbgPrint("非法PID，已驳回.");
         return ;
@@ -400,17 +399,11 @@ VOID dllInjectionByRemoteThread(
     ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)pid, (PVOID)getDllInLoadAddress((HANDLE)pid, &ntdll), (PUCHAR)"LdrLoadDll");
     DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
 
-    ULONG_PTR NtCreateThreadEx = (ULONG_PTR)getSSDTFunctionAddressByIndex(0xC2);
+    ULONG_PTR NtCreateThreadEx = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x00C2); //0xC7 as Windows 11 23H2
     DbgPrint("[NtCreateThreadEx地址: 0x%p]", (PVOID)NtCreateThreadEx);
 
-    ULONG_PTR NtResumeThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x52);
+    ULONG_PTR NtResumeThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x0052); //0x52
     DbgPrint("[NtResumeThread地址: 0x%p]", (PVOID)NtResumeThread);
-
-    ULONG_PTR NtSetInfomationThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0xD);
-    DbgPrint("[NtSetInfomationThread地址: 0x%p]", (PVOID)NtSetInfomationThread);
-
-    ULONG_PTR NtQueryInformationThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x25);
-    DbgPrint("[NtQueryInformationThread地址: 0x%p]", (PVOID)NtQueryInformationThread);
 
     HANDLE processHandle = NULL;
     OBJECT_ATTRIBUTES processObja = { 0 };
@@ -569,100 +562,6 @@ VOID dllInjectionByRemoteThread(
 
     return;
 }
-VOID dllInjectionBySingleThreadContextRipHijack(
-    IN PUCHAR processNameWannaInjectTo,
-    IN PUNICODE_STRING dllFullPath
-)
-{
-    UNREFERENCED_PARAMETER(dllFullPath);
-
-    NTSTATUS st = STATUS_SUCCESS;
-
-    CONST ULONG64 SYSTEM_PID = 0x4;
-
-    ULONG64 pid = getPIDByProcessName(processNameWannaInjectTo);
-    if (pid == SYSTEM_PID)
-    {
-        DbgPrint("非法PID，已驳回.");
-        return;
-    }
-
-    UNICODE_STRING ntdll = RTL_CONSTANT_STRING(L"ntdll.dll");
-
-    ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)pid, (PVOID)getDllInLoadAddress((HANDLE)pid, &ntdll), (PUCHAR)"LdrLoadDll");
-    DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
-
-    ULONG_PTR NtOpenThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x012F);
-    DbgPrint("[NtOpenThread地址: 0x%p]", (PVOID)NtOpenThread);
-
-    ULONG_PTR NtSuspendThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x01BE);
-    DbgPrint("[NtSuspendThread地址: 0x%p]", (PVOID)NtSuspendThread);
-
-    ULONG_PTR NtGetContextThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x00F3);
-    DbgPrint("[NtGetContextThread地址: 0x%p]", (PVOID)NtGetContextThread);
-    
-    ULONG_PTR NtSetContextThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x018D);
-    DbgPrint("[NtSetContextThread地址: 0x%p]", (PVOID)NtSetContextThread);
-
-    ULONG_PTR NtResumeThread = (ULONG_PTR)getSSDTFunctionAddressByIndex(0x0052);
-    DbgPrint("[NtResumeThread地址: 0x%p]", (PVOID)NtResumeThread);
-
-
-    ULONG64 oldCR0 = 0x0;
-    PEPROCESS pe = NULL;
-    ULONG64 cidAddress = 0x0;
-    ULONG64 initialEntryAddress = (UL64)pe + 0x5E0;
-    PLIST_ENTRY firstThreadListEntryAddress = ((PLIST_ENTRY)((UL64)pe + 0x5E0))->Flink;
-    SIZE_T count = 4;
-    HANDLE tid = NULL;
-    PsLookupProcessByProcessId((HANDLE)pid, &pe);
-    KAPC_STATE apc = { 0 };
-    KeStackAttachProcess(pe, &apc);
-    __asm__WRbreak(&oldCR0);
-
-    while ((UL64)firstThreadListEntryAddress != (UL64)(((PLIST_ENTRY)initialEntryAddress)) && count--)
-    {
-        cidAddress = (UL64)firstThreadListEntryAddress - 0x4E8 + 0x478;
-        DbgPrint("threadID: %p, threadStartAddress: 0x%p", ((PCLIENT_ID)cidAddress)->UniqueThread, *(PVOID*)((UL64)firstThreadListEntryAddress - 0x4E8 + 0x450));
-        firstThreadListEntryAddress = firstThreadListEntryAddress->Flink;
-        if (count == 0)
-        {
-            tid = (HANDLE)((PCLIENT_ID)cidAddress)->UniqueThread;
-            break;
-        }
-    }
-
-    KeUnstackDetachProcess(&apc);
-    ObDereferenceObject(pe);
-
-    //获得指定进程中目标线程的句柄.
-    HANDLE targetThreadHandle = NULL;
-    CLIENT_ID targetCid = { 0 };
-    targetCid.UniqueProcess = (HANDLE)pid;
-    targetCid.UniqueThread = (HANDLE)tid;
-    OBJECT_ATTRIBUTES targetThreadObja = { 0 };
-    InitializeObjectAttributes(&targetThreadObja, NULL, 0, NULL, NULL);
-
-    st = ((NTSTATUS(*)(
-        _Out_ PHANDLE ThreadHandle,
-        _In_ ACCESS_MASK DesiredAccess,
-        _In_ PCOBJECT_ATTRIBUTES ObjectAttributes,
-        _In_opt_ PCLIENT_ID ClientId
-        ))NtOpenThread)(
-        &targetThreadHandle,
-        THREAD_ALL_ACCESS,
-        &targetThreadObja,
-        &targetCid
-    );
-
-    if(targetThreadHandle && NT_SUCCESS(st))
-    {
-        ZwClose(targetThreadHandle);
-    }
-
-    return;
-}
-
 UCHAR readByte(
     IN HANDLE pid, 
     IN PVOID address
