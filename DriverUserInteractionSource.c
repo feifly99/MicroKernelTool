@@ -4,9 +4,9 @@
 #pragma warning(disable:6011)
 #pragma warning(disable:4702)
 
-__INIT_GLOBAL__DEFINES__;
+__SEARCH_PROCEDURE_DEFINES__;
 static CLIENT_ID g_cid = { 0 };
-__INIT_GLOBAL__DEFINES__;
+__SEARCH_PROCEDURE_DEFINES__;
 
 __PROCESS_MEMORY_SPACE_DEFINES__;
 static PVAL g_headVAL = NULL;
@@ -68,24 +68,11 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
     __DRIVER_USER_IO_ENTRY_PUBLIC_SETTINGS__;
     switch (controlCode)
     {
-        case ____$_INITIZE_PROCESS_ID_$____:
+        case ____$_PREPARE_SEARCH_PROCEDURE_$____:
         {
             ULONG64 pid = *(ULONG64*)pIrp->AssociatedIrp.SystemBuffer;
             g_cid.UniqueProcess = (HANDLE)pid;
             g_cid.UniqueThread = NULL;
-            if (g_cid.UniqueProcess)
-            {
-                log(进程ID保存成功.);
-            }
-            else
-            {
-                log(进程ID保存失败！);
-            }
-            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
-            break;
-        }
-        case ____$_INITIALIZE_PROCESS_MEMORY_SPACE_$____:
-        {
             OBJECT_ATTRIBUTES obja = { 0 };
             InitializeObjectAttributes(&obja, NULL, 0, NULL, NULL);
             log(开始初始化进程内存...);
@@ -107,7 +94,7 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             }
             break;
         }
-        case ____$_SEARCH_PROCEDURE_$____:
+        case ____$_ENTER_SEARCH_PROCEDURE_$____:
         {
             //在此case中内核可以借用SystemBuffer来临时访问用户层地址，即DbgPrint("%d", *(INT*)si->u.precise.ptr2Value); 可以成功打印用户层指针的内容.
             //1.(System)Buffer本地化; 2.地址内核化.
@@ -270,11 +257,8 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
                     break;
                 }
             }
-            checkSI(si);
+            //checkSI(si);
             searchTargetBySearchInfo(si, (ULONG64)g_cid.UniqueProcess, g_headVAL, &g_headRSL);
-            log(已经走完！正在等待！);
-            kernelSleep(2500);
-            //往下出问题了！主核心没问题！
             if (g_headRSL != NULL)
             {
                 printListRSL((ULONG64)g_cid.UniqueProcess, &g_headRSL);
@@ -297,37 +281,75 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
             break;
         }
+        case ____$_GET_PROCESS_HANDLE_$____:
+        {
+            HANDLE pid = *(HANDLE*)pIrp->AssociatedIrp.SystemBuffer;
+            CLIENT_ID cid = { 0 };
+            cid.UniqueProcess = pid;
+            cid.UniqueThread = NULL;
+            OBJECT_ATTRIBUTES obja = { 0 };
+            InitializeObjectAttributes(&obja, NULL, 0, NULL, NULL);
+            HANDLE processHandle = NULL;
+            ZwOpenProcess(&processHandle, GENERIC_ALL, &obja, &cid);
+            *(HANDLE*)pIrp->AssociatedIrp.SystemBuffer = processHandle;
+            DbgPrint("0x%p", processHandle);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, sizeof(HANDLE));
+            break;
+        }
+        case ____$_CLOSE_PROCESS_HANDLE_$____:
+        {
+            HANDLE processHandle = *(HANDLE*)pIrp->AssociatedIrp.SystemBuffer;
+            if (processHandle)
+            {
+                ZwClose(processHandle);
+                processHandle = NULL;
+            }
+            else
+            {
+                log(传入句柄为空！);
+            }
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
         case ____$_LIST_PROCESS_MODULE_$____:
         {
-            displayAllModuleInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+            HANDLE pid = *(HANDLE*)pIrp->AssociatedIrp.SystemBuffer;
+            displayAllModuleInfomationByProcessId((ULONG64)pid);
             IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
             break;
         }
         case ____$_LIST_PROCESS_THREAD_$____:
         {
-            displayAllThreadInfomationByProcessId((ULONG64)g_cid.UniqueProcess);
+            HANDLE pid = *(HANDLE*)pIrp->AssociatedIrp.SystemBuffer;
+            displayAllThreadInfomationByProcessId((ULONG64)pid);
             IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_READ_PROCESS_MEMORY_$____:
+        {
+            PRPMI inputBuffer = (PRPMI)pIrp->AssociatedIrp.SystemBuffer;
+            PVOID receivedBuffer = (PVOID)ExAllocatePoolWithTag(NonPagedPool, (inputBuffer->readLength + 0xFFFull) & ~0xFFFull, 'z+aa');
+            RtlZeroMemory(receivedBuffer, (inputBuffer->readLength + 0xFFFull) & ~0xFFFull);
+            readProcessMemory((ULONG64)inputBuffer->pid, inputBuffer->baseAddress, inputBuffer->readLength, &receivedBuffer);
+            RtlCopyMemory((PVOID)pIrp->AssociatedIrp.SystemBuffer, receivedBuffer, (inputBuffer->readLength + 0xFFFull) & ~0xFFFull);
+            ExFreePool(receivedBuffer);
+            receivedBuffer = NULL;
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, (inputBuffer->readLength + 0xFFFull) & ~0xFFFull);
             break;
         }
         case ____$_WRITE_PROCESS_MEMORY_$____:
         {
             PWPMI inputBuffer = (PWPMI)pIrp->AssociatedIrp.SystemBuffer;
-            if (inputBuffer)
+            if (inputBuffer->accessMode == VIRTUAL_MODE)
             {
-                PUCHAR tempBuffer = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, inputBuffer->writeMemoryLength * sizeof(UCHAR), 'z+aa');
-                for (SIZE_T j = 0; j < inputBuffer->writeMemoryLength && tempBuffer; j++)
-                {
-                    tempBuffer[j] = *(UCHAR*)((ULONG64)(inputBuffer->writeBuffer) + j);
-                }
-                writeProcessMemory((ULONG64)g_cid.UniqueProcess, inputBuffer->writeBeginAddress, (PVOID)tempBuffer, inputBuffer->writeMemoryLength);
-                ExFreePool(tempBuffer);
-                IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+                writeProcessMemory((ULONG64)inputBuffer->pid, inputBuffer->baseAddress, inputBuffer->writeBuffer, inputBuffer->writeLength);
             }
             else
             {
-                log(空指针输入！);
-                IOCTL_COMPLETE_MARK(retSt, STATUS_INVALID_ADDRESS, 0);
+                ULONG_PTR padd = getPhysicalAddressByCR3AndVirtualAddress(getCR3SaferByPID((ULONG64)inputBuffer->pid), (ULONG_PTR)inputBuffer->baseAddress);
+                writePhysicalMemory(padd, inputBuffer->writeBuffer, inputBuffer->writeLength);
             }
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
             break;
         }
         case ____$_PROCESS_HIDEN_PROCEDURE_$____:
@@ -338,11 +360,45 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
             IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
             break;
         }
+        case ____$_PROCESS_RESTORE_PROCEDURE_$____:
+        {
+            restoreHiddenProcess(&g_headHPL);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_REBUILD_DEBUG_SYSTEM_$____:
+        {
+            USHORT newDebugPortOffset = *(USHORT*)pIrp->AssociatedIrp.SystemBuffer;
+            USHORT oldDebugPortOffset = 0;
+            rebuildDebugSystem(newDebugPortOffset, FALSE, &oldDebugPortOffset);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_RESTORE_DEBUG_SYSTEM_$____:
+        {
+            USHORT oldDebugPortOffset = 0;
+            rebuildDebugSystem(0x578, FALSE, &oldDebugPortOffset);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
         case ____$_PROCESS_PRETENT_PROCEDURE_$____:
         {
             PPPI inputBuffer = (PPPI)pIrp->AssociatedIrp.SystemBuffer;
             processPretentProcedure(inputBuffer->ditryPID, inputBuffer->parasitePID, &g_headPPL);
             printListPPL(g_headPPL);
+            IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
+            break;
+        }
+        case ____$_DLL_KERNELMODE_INJECTION_$____:
+        {
+            //demo:
+            PUNICODE_STRING dllPath = (PUNICODE_STRING)ExAllocatePoolWithTag(NonPagedPool, sizeof(UNICODE_STRING), 'z+aa');
+            RtlZeroMemory(dllPath, sizeof(UNICODE_STRING));
+            UNICODE_STRING stackDllPath = RTL_CONSTANT_STRING(L"D:\\ss.dll");
+            RtlCopyUnicodeString(dllPath, &stackDllPath);
+            dllInjectionByRemoteThread((HANDLE)17568, dllPath);
+            ExFreePool(dllPath);
+            dllPath = NULL;
             IOCTL_COMPLETE_MARK(retSt, STATUS_SUCCESS, 0);
             break;
         }
@@ -378,27 +434,4 @@ NTSTATUS Driver_User_IO_Interaction_Entry(
         }
     }
     return retSt;
-}
-ULONG checkProtectAttributesForTargetAddress(
-    PVAL headVAL,
-    PVOID targetAddress
-)
-{
-    PVAL temp = headVAL;
-    while (temp->ValidAddressEntry.Next != NULL)
-    {
-        if (
-            (ULONG64)temp->beginAddress < (ULONG64)targetAddress
-            &&
-            (ULONG64)((CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry)->beginAddress)) >(ULONG64)targetAddress
-            )
-        {
-            return temp->memoryProtectAttributes;
-        }
-        else
-        {
-            temp = CONTAINING_RECORD(temp->ValidAddressEntry.Next, VAL, ValidAddressEntry);
-        }
-    }
-    return 0;
 }
