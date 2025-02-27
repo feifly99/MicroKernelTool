@@ -86,7 +86,7 @@ VOID writePhysicalMemory(
     PHYSICAL_ADDRESS p_address = { 0 };
     p_address.QuadPart = (LONG64)physicalAddress;
     PVOID kernelAddressMappedByPhysical = MmMapIoSpace(p_address, 0x1000, MmNonCachedUnordered);
-    CR0breakOperation(memcpy(kernelAddressMappedByPhysical, writeBuffer, writeLenLessThan0x1000););
+    CR0breakOperation(RtlCopyMemory(kernelAddressMappedByPhysical, writeBuffer, writeLenLessThan0x1000););
     MmUnmapIoSpace(kernelAddressMappedByPhysical, 0x1000);
     return;
 }
@@ -383,18 +383,10 @@ ULONG_PTR getDllExportFunctionAddressByNameKernelMode(
     return ret;
 }
 VOID dllInjectionByRemoteThread(
-    PUCHAR processNameWannaInjectTo,
+    HANDLE pid,
     PUNICODE_STRING dllFullPath
 )
 {
-    ULONG64 pid = getPIDByProcessName(processNameWannaInjectTo);
-
-    if (pid == 0x4)
-    {
-        DbgPrint("非法PID，已驳回.");
-        return ;
-    }
-
     UNICODE_STRING ntdll = RTL_CONSTANT_STRING(L"ntdll.dll");
     ULONG_PTR LdrLoadDll = (ULONG_PTR)getDllExportFunctionAddressByName((HANDLE)pid, (PVOID)getDllInLoadAddress((HANDLE)pid, &ntdll), (PUCHAR)"LdrLoadDll");
     DbgPrint("[LdrLoadDll地址: 0x%p]", (PVOID)LdrLoadDll);
@@ -412,7 +404,7 @@ VOID dllInjectionByRemoteThread(
     cidInput.UniqueProcess = (HANDLE)pid;
     cidInput.UniqueThread = NULL;
     NtOpenProcess(&processHandle, PROCESS_ALL_ACCESS, &processObja, &cidInput);
-    
+
     PVOID machineCodeUserMem = NULL;
     SIZE_T machineCodeSize = 0x1000;
     ZwAllocateVirtualMemory(processHandle, &machineCodeUserMem, 0, &machineCodeSize, MEM_COMMIT, PAGE_EXECUTE); 
@@ -577,6 +569,36 @@ UCHAR readByte(
     KeUnstackDetachProcess(&apc);
     ObDereferenceObject(pe);
     return targetByte;
+}
+VOID readProcessMemory(
+    IN ULONG64 pid,
+    IN PVOID targetAddress,
+    IN SIZE_T readLength,
+    IN PVOID* receivedBuffer
+)
+{
+    PMDL mdl = NULL;
+    PEPROCESS pe = NULL;
+    KAPC_STATE apc = { 0 };
+    PsLookupProcessByProcessId((HANDLE)pid, &pe);
+    KeStackAttachProcess(pe, &apc);
+    mdl = IoAllocateMdl((PVOID)((ULONG_PTR)targetAddress & ~0xFFFull), (readLength + 0xFFFull) & ~0xFFFull, FALSE, FALSE, NULL);
+    SIZE_T offset = (ULONG_PTR)targetAddress & 0xFFFull;
+    __try
+    {
+        MmProbeAndLockPages(mdl, UserMode, IoReadAccess);
+        PVOID krnlMapped = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority);
+        RtlCopyMemory(*receivedBuffer, (PVOID)((ULONG_PTR)krnlMapped + offset), readLength);
+        MmUnlockPages(mdl);
+    }
+    __except (1)
+    {
+        log(读取的页面不在物理页！);
+    }
+    IoFreeMdl(mdl);
+    KeUnstackDetachProcess(&apc);
+    ObDereferenceObject(pe);
+    return;
 }
 VOID writeProcessMemory(
     IN ULONG64 pid,
