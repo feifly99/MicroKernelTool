@@ -5,6 +5,12 @@
 
 #define REG_NUM 20
 
+typedef struct dllInjectionInfo
+{
+    HANDLE pidWannaInject;
+    PUNICODE_STRING dllFullPath;
+}DLL_INJECT_INFORMATION, * PDLL_INJECT_INFORMATION;
+
 VOID kernelSleep(
     LONG milisecond
 );
@@ -61,6 +67,10 @@ VOID displayDllExportFunctionTable(
     IN HANDLE pid,
     IN PVOID dllBaseInLoad
 );
+VOID dllInjectionByRemoteThread(
+    HANDLE pid,
+    PUNICODE_STRING dllFullPath
+);
 ULONG_PTR getDllExportFunctionAddressByName(
     IN HANDLE pid,
     IN PVOID dllBaseInLoad,
@@ -77,6 +87,12 @@ ULONG_PTR getDllExportFunctionAddressByNameKernelMode(
 UCHAR readByte(
     IN HANDLE pid,
     IN PVOID address
+);
+VOID readProcessMemory(
+    IN ULONG64 pid,
+    IN PVOID targetAddress,
+    IN SIZE_T readLength,
+    IN PVOID* receivedBuffer
 );
 VOID writeProcessMemory(
     IN ULONG64 pid,
