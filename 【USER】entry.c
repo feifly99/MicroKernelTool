@@ -8,7 +8,7 @@ int main()
 {
 	initializeGlobalKernelFileHandle();
 	ULONG functionCode = 0;
-	printf("\t\t\t\t\t[sYsHacker By AYF @HEU]\nÑ¡Ôñ²Ù×÷£º\n\t\t\t\t\t1.µ÷ÊÔÆ÷£»\n\t\t\t\t\t2.DLL×¢Èë£»\n\t\t\t\t\t3.Òş²Ø½ø³Ì£»\n\t\t\t\t\t4.ÁĞ¾Ù½ø³ÌÄ£¿é/Ïß³Ì£»\n\t\t\t\t\t5.ÄÚ´æä¯ÀÀ£»\n\t\t\t\t\t6.»ñµÃ½ø³Ì¾ä±ú£»\n\t\t\t\t\t7.¶ÁĞ´½ø³ÌÄÚ´æ£»\n\t\t\t\t\t8.ÖØ¹¹µ÷ÊÔÂß¼­.\nÄúµÄÑ¡Ôñ£º");
+	printf("\t\t\t\t\t[sYsHacker By AYF @HEU]\né€‰æ‹©æ“ä½œï¼š\n\t\t\t\t\t1.è°ƒè¯•å™¨ï¼›\n\t\t\t\t\t2.DLLæ³¨å…¥ï¼›\n\t\t\t\t\t3.éšè—è¿›ç¨‹ï¼›\n\t\t\t\t\t4.åˆ—ä¸¾è¿›ç¨‹æ¨¡å—/çº¿ç¨‹ï¼›\n\t\t\t\t\t5.å†…å­˜æµè§ˆï¼›\n\t\t\t\t\t6.è·å¾—è¿›ç¨‹å¥æŸ„ï¼›\n\t\t\t\t\t7.è¯»å†™è¿›ç¨‹å†…å­˜ï¼›\n\t\t\t\t\t8.é‡æ„è°ƒè¯•é€»è¾‘.\næ‚¨çš„é€‰æ‹©ï¼š");
 	scanf_s("%lu", &functionCode);
 
 	getProcessHandleResource = (PGET_PROCESS_HANDLE)malloc(sizeof(GET_PROCESS_HANDLE)); 
@@ -74,11 +74,13 @@ int main()
 		}
 		default:
 		{
-			printf("ÊäÈëÓĞÎó£¬ÒÑ¾­ÖÕÖ¹´Ë½ø³Ì.\n");
+			printf("è¾“å…¥æœ‰è¯¯ï¼Œå·²ç»ç»ˆæ­¢æ­¤è¿›ç¨‹.\n");
 			closeGlobalKernelFileHandle();
 			return 0xFFFF;
 		}
 	}
 	closeGlobalKernelFileHandle();
+	free(getProcessHandleResource);
+	getProcessHandleResource = NULL;
 	return 0;
 }
